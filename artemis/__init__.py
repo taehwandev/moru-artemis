@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Modified by the tao-artemis contributors on 2026-09-10:
+# defer public SDK exports to isolate device MCP imports from agent initialization.
+
 """☕ ARTEMIS: Autonomous Multimodal Android Agent & Testing Framework."""
 
 from artemis._version import __version__

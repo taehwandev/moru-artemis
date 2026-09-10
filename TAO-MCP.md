@@ -1,16 +1,26 @@
 # tao-artemis: host-driven Android MCP
 
-This fork retains Google's Apache-2.0 Artemis source and copyright notices.
+This is an independent fork of [Google's Artemis](https://github.com/google/artemis),
+not maintained, endorsed, or sponsored by Google. It retains the original
+Apache-2.0 source and copyright notices. Fork additions are distributed under
+the same [license](LICENSE). Google's trademarks are not licensed by Apache-2.0.
 `tao_mcp.py` adds a small stdio MCP adapter for existing Codex or Claude sessions.
 The host reasons about screenshots/UI elements; Artemis executes explicit device
 operations. No Gemini, OpenAI or Anthropic API key is required for this adapter.
-The host's normal subscription or usage charges still apply.
+The host's normal authentication, subscription, usage charges, and data policies
+still apply. No separate model call is made by this adapter; screen content can
+still be sent to the host model. Upstream benchmark results in the original
+README are not measurements of this adapter.
 
 ## Install and connect
 
-Use Python 3.12 and the existing lockfile:
+Install Python 3.12, `uv`, and ADB. Clone this fork and use its existing lockfile.
+Device operations require an authorized Android device or running emulator;
+install the app under test through your normal build/install process:
 
 ```sh
+git clone https://github.com/taehwandev/tao-artemis.git
+cd tao-artemis
 uv sync --frozen --no-dev --python python3.12
 ```
 
@@ -20,10 +30,26 @@ Configure an MCP server named `tao-artemis` in each host with:
 - args: `-B` and the absolute path to this checkout's `tao_mcp.py`
 - optional env: `ARTEMIS_APP_DIR` for private local runtime state
 
+On Windows, use `.venv/Scripts/python.exe`. The lockfile installs the upstream
+dependency set; this adapter is not a minimal dependency distribution.
+
 Keep machine-specific paths and device serials out of committed configuration.
 Restart/reconnect the host after registration. Standard stdio MCP works with
 both Codex and Claude; it does not start either host CLI or a second model agent.
 Do not register the upstream autonomous `mcp_server.server` for this mode.
+
+## Available tools
+
+| Tool | Purpose |
+| --- | --- |
+| `devices` | List connected device serials |
+| `screenshot` | Return a native MCP image |
+| `hierarchy` | Read UI elements without a separate OCR/model call |
+| `tap` | Tap observed pixel coordinates |
+| `swipe` | Swipe between coordinates with an explicit duration |
+| `input_text` | Focus a field and enter or replace text |
+| `press_key` | Send an Android keycode |
+| `launch_app` | Launch an installed app; does not guarantee a cold start |
 
 ## Use only when device evidence is needed
 
@@ -33,6 +59,11 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 3. Use `screenshot` (native MCP image) and `hierarchy` to inspect the current UI.
 4. Use `tap`, `swipe`, `input_text`, `press_key`, or `launch_app` within the user's
    requested scope. Read the screen again to verify the result.
+
+Registration alone does not route tests through MCP. The host workflow must
+select and call the tools. Tao's `device-testing` guidance supports preparation
+when the operator has configured the local device MCP registry. Keep unit tests
+in the project's normal test runner.
 
 The adapter forces local mode and does not start an awake-service thread, OCR
 provider, autonomous task runner, or cloud device service. ADB must already be
