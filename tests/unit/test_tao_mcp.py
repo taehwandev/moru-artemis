@@ -75,6 +75,36 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
             await self.server.swipe('device-a', 1, 2, 3, 4, duration_ms=0)
         self.mock_get.assert_not_called()
 
+    async def test_factory_contract_drift_fails_before_device_access(self):
+        from tao_mcp import _check_controller_factory
+        for factory in (None, lambda: None, lambda serial: None, AsyncMock()):
+            with self.subTest(factory=type(factory).__name__):
+                with self.assertRaisesRegex(RuntimeError, 'Incompatible Artemis'):
+                    _check_controller_factory(SimpleNamespace(_get_controller=factory))
+
+    async def test_factory_contract_check_never_opens_device(self):
+        from tao_mcp import _check_controller_factory
+        def factory(device_serial=None):
+            raise AssertionError('device access during startup')
+        _check_controller_factory(SimpleNamespace(_get_controller=factory))
+
+    async def test_input_uses_public_focus_and_preserves_target(self):
+        from artemis.mcp.actuators.adb import ensure_focus_at_coords
+        self.assertIs(self.server._ensure_focus, ensure_focus_at_coords)
+        self.controller.type_text = AsyncMock(return_value=True)
+        with patch.object(self.server, '_ensure_focus', AsyncMock(return_value=None)) as focus:
+            self.assertEqual('Success', await self.server.input_text('device-b', 12, 34, 'hello', True))
+        self.mock_get.assert_called_once_with(device_serial='device-b')
+        focus.assert_awaited_once_with(self.controller, 12, 34)
+        self.controller.type_text.assert_awaited_once_with('hello', clear_existing=True)
+
+    async def test_focus_failure_prevents_typing(self):
+        self.controller.type_text = AsyncMock()
+        with patch.object(self.server, '_ensure_focus', AsyncMock(return_value='focus failed')):
+            with self.assertRaisesRegex(RuntimeError, 'focus failed'):
+                await self.server.input_text('device-b', 12, 34, 'hello')
+        self.controller.type_text.assert_not_awaited()
+
     async def test_stdio_initialize_and_schema_without_api_keys(self):
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client

@@ -2,11 +2,26 @@
 
 import base64
 import json
+import inspect
 import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
+
+
+def _check_controller_factory(adb_server):
+    """Fail at startup when the pinned upstream private factory contract drifts."""
+    factory = getattr(adb_server, '_get_controller', None)
+    try:
+        if not callable(factory) or inspect.iscoroutinefunction(factory):
+            raise TypeError('expected synchronous controller factory')
+        inspect.signature(factory).bind(device_serial='contract-check')
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            'Incompatible Artemis controller factory; restore the tested upstream '
+            'revision or update the tao-artemis adapter before device testing.'
+        ) from exc
 
 
 class DirectDeviceServer:
@@ -19,6 +34,10 @@ class DirectDeviceServer:
         os.environ.setdefault('ARTEMIS_APP_DIR', str(Path.home() / '.tao' / 'artemis'))
         from artemis.mcp import adb_server
 
+        from artemis.mcp.actuators.adb import ensure_focus_at_coords
+
+        _check_controller_factory(adb_server)
+        self._ensure_focus = ensure_focus_at_coords
         self._adb = adb_server
         self.mcp = FastMCP('tao-artemis')
         for tool in (self.devices, self.screenshot, self.hierarchy):
@@ -73,7 +92,7 @@ class DirectDeviceServer:
                          text: str, clear_existing: bool = False) -> str:
         """Focus an observed text field and type text; optionally replace its contents."""
         controller = self._device(device_serial)
-        error = await self._adb._ensure_focus_at_coords(controller, x, y)
+        error = await self._ensure_focus(controller, x, y)
         if error:
             raise RuntimeError(error)
         if not await controller.type_text(text, clear_existing=clear_existing):

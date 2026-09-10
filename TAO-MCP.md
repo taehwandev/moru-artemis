@@ -55,3 +55,23 @@ Run the adapter tests and existing lazy-export regression tests:
 Tool discovery proves MCP readiness, not successful UI interaction. Report device
 observation/action checks separately, and do not claim an end-to-end app test
 from installation alone.
+
+## Upstream compatibility
+
+Keep the lazy public exports in `artemis/__init__.py`: Python executes a package's
+initializer even when importing a specific submodule. Direct submodule imports
+alone cannot isolate this adapter from eager autonomous-agent initialization.
+The lazy-export regression tests protect the existing SDK exports.
+
+Text focus uses the exported `ensure_focus_at_coords` actuator helper. Controller
+creation still uses upstream's private `_get_controller`, which has no equivalent
+public factory in the pinned source. Startup checks its synchronous, explicit-serial
+call signature without opening a device and fails with a compatibility error on
+drift. This catches interface changes, not every behavioral change: run device
+observation/action checks before accepting an upstream update.
+
+A trace directory can be created during initialization; it is not evidence that
+a device tool ran. Likewise, configured host registration does not prove that a
+live chat loaded the server. Confirm tool discovery in the active client and an
+actual observation before reporting device verification. Animation timing needs
+a sequence or recording; a single screenshot cannot establish motion behavior.
