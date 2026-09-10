@@ -8,6 +8,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
+from tao_elements import ElementTools
 
 
 def _check_controller_factory(adb_server):
@@ -44,6 +45,11 @@ class DirectDeviceServer:
             self.mcp.add_tool(tool, annotations=ToolAnnotations(readOnlyHint=True))
         for tool in (self.tap, self.swipe, self.input_text, self.press_key, self.launch_app):
             self.mcp.add_tool(tool)
+
+        elements = ElementTools(self)
+        self.mcp.add_tool(elements.wait_for_element, annotations=ToolAnnotations(readOnlyHint=True))
+        self.mcp.add_tool(elements.tap_element)
+        self.mcp.add_tool(elements.input_element)
 
     def _device(self, device_serial: str):
         if not device_serial.strip():

@@ -42,6 +42,9 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 
 | Tool | Purpose |
 | --- | --- |
+| `tap_element` | Tap one exact UI match without host coordinate calculation |
+| `input_element` | Focus and type into one exact UI match |
+| `wait_for_element` | Poll locally for a bounded UI condition and return a compact result |
 | `devices` | List connected device serials |
 | `screenshot` | Return a native MCP image |
 | `hierarchy` | Read UI elements without a separate OCR/model call |
@@ -106,3 +109,44 @@ a device tool ran. Likewise, configured host registration does not prove that a
 live chat loaded the server. Confirm tool discovery in the active client and an
 actual observation before reporting device verification. Animation timing needs
 a sequence or recording; a single screenshot cannot establish motion behavior.
+
+## Element actions and local waits
+
+Prefer `tap_element` and `input_element` for accessible elements. Pass an explicit
+`device_serial` and a `selector` object with exact `text`, `content-desc`,
+`resource-id`, `class`, or `package` values. Multiple fields are ANDed. Empty or
+unknown selectors, multiple matches, disabled/unknown enabled state, and invalid
+bounds refuse actions. No first-match fallback or fuzzy model selection occurs.
+The coordinates come from a fresh hierarchy; UI movement between observation and
+action is still possible. Observe the outcome rather than assuming success.
+
+Example tool arguments (fixture values only):
+
+```json
+{"device_serial":"SELECTED_SERIAL","selector":{"text":"Search"}}
+```
+
+For `input_element`, also supply `text` and optionally `clear_existing`.
+Action results use `status: action_sent`; they are not acceptance assertions.
+Input results do not echo the supplied text. Existing pixel tools stay available.
+
+`wait_for_element` supports `present`, `absent`, `enabled`, `disabled`, `focused`,
+`checked`, and `selected`. Timeout is 1–30000 ms (default 5000), polling interval
+100–2000 ms (default 250). Polling runs inside one tool call without additional
+LLM turns; only the final matching-element summary, observation count, elapsed
+time and `matched` flag are returned. `matched: false` / `status: timeout` is a
+failed condition, never a passing test. Device failures and ambiguous matches
+are errors, not proof of absence. Timeouts use cooperative async cancellation;
+a blocking upstream device call can delay return. This is not a motion recorder.
+
+Reconnect the host MCP client after updating to discover all 11 tools. Verify
+new selection/wait contracts with:
+
+```sh
+.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_elements.py'
+```
+
+One element action replaces the usual host hierarchy-read/coordinate-calculation/
+action round trip; one wait can perform several local observations. Actual speed
+and model-token savings depend on the device and scenario and are not benchmarked
+by these contract tests. No screenshot-diff or animation-analysis feature is added.
