@@ -689,7 +689,9 @@ def test_cli_server_lifecycle_aliases(monkeypatch):
 # artemis doctor (readiness-engine backed)
 # ---------------------------------------------------------------------------
 
-_RAW_SECRET = "sk-RAWSECRET0123456789abcdef"
+# Modified by tao-artemis: explicitly mark synthetic metadata as a placeholder.
+# Preserve RAWSECRET so the CLI non-disclosure assertions remain meaningful.
+_RAW_SECRET = "sk-RAWSECRET-placeholder-0123456789abcdef"
 
 
 def _probe(
