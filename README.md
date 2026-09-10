@@ -1,3 +1,5 @@
+> **tao-artemis fork:** For API-key-free, host-driven Android tools in Codex or Claude, start with [TAO-MCP.md](TAO-MCP.md). The upstream Artemis documentation follows below.
+
 <p align="center">
   <img src="./docs/assets/artemis-banner.png?v=7" alt="ARTEMIS Banner" width="100%" />
 </p>

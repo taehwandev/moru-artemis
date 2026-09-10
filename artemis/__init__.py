@@ -16,12 +16,24 @@
 
 from artemis._version import __version__
 
-from artemis.interfaces.sdk.client import ArtemisClient, ConcurrencyMode
-from artemis.interfaces.sdk.task import StreamEvent, StreamEventType, Task
-from artemis_client import Capabilities, Device, TaskHandle, TaskResult
-from artemis.sdk.agent import Agent
-from artemis.sdk.builders import Builders
-from artemis.drivers.base import BaseDeviceDriver
+# Load optional SDK/agent dependencies only when their public exports are used.
+# Importing a device MCP submodule must not bootstrap the autonomous agent.
+from importlib import import_module
+
+_EXPORT_MODULES = {
+    'ArtemisClient': 'artemis.interfaces.sdk.client',
+    'ConcurrencyMode': 'artemis.interfaces.sdk.client',
+    'StreamEvent': 'artemis.interfaces.sdk.task',
+    'StreamEventType': 'artemis.interfaces.sdk.task',
+    'Task': 'artemis.interfaces.sdk.task',
+    'Capabilities': 'artemis_client',
+    'Device': 'artemis_client',
+    'TaskHandle': 'artemis_client',
+    'TaskResult': 'artemis_client',
+    'Agent': 'artemis.sdk.agent',
+    'Builders': 'artemis.sdk.builders',
+    'BaseDeviceDriver': 'artemis.drivers.base',
+}
 
 __all__ = [
     "__version__",
@@ -38,3 +50,16 @@ __all__ = [
     "TaskResult",
     "BaseDeviceDriver",
 ]
+
+
+def __getattr__(name: str):
+    module = _EXPORT_MODULES.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return sorted(set(globals()) | set(__all__))
