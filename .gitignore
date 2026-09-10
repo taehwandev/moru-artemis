@@ -130,3 +130,5 @@ Thumbs.db
 !.env*.schema
 !.env*.template
 .env.vibeguard.local
+# VibeGuard local state
+.vibeguard/

@@ -1,0 +1,19 @@
+{
+  "mode": "guided",
+  "display": "emoji",
+  "rulesPath": "/Users/taehwan/git/tao-agent-os",
+  "repository": {
+    "visibility": "unknown"
+  },
+  "cost": {
+    "acknowledgedPaidDependencies": []
+  },
+  "update": {
+    "checkIntervalDays": 7
+  },
+  "autoFix": {
+    "envGitignore": true,
+    "envExample": true,
+    "simpleSecretQuarantine": true
+  }
+}
