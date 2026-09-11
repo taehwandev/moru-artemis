@@ -7,6 +7,9 @@ import time
 
 _FIELDS = {'text', 'content-desc', 'resource-id', 'class', 'package'}
 _STATES = {'present', 'absent', 'enabled', 'disabled', 'focused', 'checked', 'selected'}
+_VIEW_IDENTITY = _FIELDS | {'bounds'}
+_VIEW_WHEN_TRUE = ('checkable', 'checked', 'clickable', 'focused',
+                   'long-clickable', 'scrollable', 'selected')
 
 
 def _selector(selector):
@@ -33,11 +36,24 @@ def _flag(element, name):
     return None
 
 
-def _summary(element):
+def element_view(element):
+    """The fields this adapter's contracts expose, for one element or a whole screen.
+
+    ``enabled`` is reported whenever upstream states it, true or false, because a
+    false value is what explains a refused action. The remaining flags carry
+    signal only when set, so they appear as ``true`` or not at all rather than
+    repeating ``false`` on every element of a screen. Flags upstream leaves
+    unknown are omitted, which is what ``_center`` already treats as unusable.
+    """
     if element is None:
         return None
-    keys = _FIELDS | {'bounds', 'enabled', 'focused', 'checked', 'selected', 'clickable'}
-    return {k: element[k] for k in sorted(keys) if k in element}
+    view = {k: element[k] for k in sorted(_VIEW_IDENTITY)
+            if element.get(k) not in ('', None)}
+    enabled = _flag(element, 'enabled')
+    if enabled is not None:
+        view['enabled'] = enabled
+    view.update({k: True for k in _VIEW_WHEN_TRUE if _flag(element, k) is True})
+    return view
 
 
 def _center(element):
@@ -70,7 +86,7 @@ class ElementTools:
         """Tap one exact UI match. Combine selector fields to disambiguate; never picks first."""
         element, (x, y) = await self._target(device_serial, selector)
         await self.server.tap(device_serial, x, y)
-        return {'status': 'action_sent', 'element': _summary(element), 'point': [x, y]}
+        return {'status': 'action_sent', 'element': element_view(element), 'point': [x, y]}
 
     async def input_element(self, device_serial: str, selector: dict[str, str],
                             text: str, clear_existing: bool = False) -> dict:
@@ -120,4 +136,4 @@ class ElementTools:
     def _result(matched, element, observations, start):
         return {'matched': matched, 'status': 'matched' if matched else 'timeout',
                 'observations': observations, 'elapsed_ms': math.ceil((time.monotonic() - start) * 1000),
-                'element': _summary(element)}
+                'element': element_view(element)}

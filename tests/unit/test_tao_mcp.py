@@ -1,6 +1,7 @@
 """Host MCP protocol, device targeting and failure contracts without a device."""
 import asyncio
 import base64
+import json
 import os
 from pathlib import Path
 import sys
@@ -71,6 +72,44 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
     async def test_hierarchy_does_not_need_ocr(self):
         self.assertEqual('[{"text": "Hello"}]', await self.server.hierarchy('device-b'))
         self.controller.get_ui_elements.assert_awaited_once_with()
+
+    async def test_hierarchy_keeps_targeting_signal_and_drops_redundant_fields(self):
+        self.controller.get_ui_elements = AsyncMock(return_value=[{
+            'text': 'Search', 'content-desc': 'Search', 'accessibilityText': 'Search',
+            'resource-id': 'pkg:id/search', 'class': 'android.widget.EditText',
+            'package': 'pkg', 'bounds': '[0,0][10,10]',
+            'parsed_bounds': {'left': 0, 'top': 0, 'right': 10, 'bottom': 10},
+            'enabled': 'true', 'clickable': 'true', 'scrollable': 'false',
+            'checked': 'false', 'focused': 'false', 'selected': 'false',
+            'checkable': 'false', 'long-clickable': 'false', 'focusable': 'true',
+            'password': 'false', 'visible-to-user': 'true', 'index': '0',
+            'drawing-order': '3', 'display-id': '0', 'hint': '',
+        }])
+        self.assertEqual([{
+            'bounds': '[0,0][10,10]', 'class': 'android.widget.EditText',
+            'content-desc': 'Search', 'enabled': True, 'package': 'pkg',
+            'resource-id': 'pkg:id/search', 'text': 'Search', 'clickable': True,
+        }], json.loads(await self.server.hierarchy('device-b')))
+
+    async def test_hierarchy_reports_affordances_and_distinguishes_unknown_state(self):
+        self.controller.get_ui_elements = AsyncMock(return_value=[
+            {'class': 'androidx.recyclerview.widget.RecyclerView', 'scrollable': 'true'},
+            {'text': 'Submit', 'enabled': 'false'},
+            {'text': 'Unknown', 'enabled': 'partly'},
+        ])
+        self.assertEqual(
+            [{'class': 'androidx.recyclerview.widget.RecyclerView', 'scrollable': True},
+             {'text': 'Submit', 'enabled': False},
+             {'text': 'Unknown'}],
+            json.loads(await self.server.hierarchy('device-b')))
+
+    def test_hierarchy_backend_is_pinned_but_never_overrides_an_explicit_choice(self):
+        from tao_mcp import DirectDeviceServer
+        self.assertEqual('uiautomator', os.environ['ARTEMIS_HIERARCHY_BACKEND'])
+        with patch.dict(os.environ, {'ARTEMIS_HIERARCHY_BACKEND': 'helper',
+                                     'ARTEMIS_APP_DIR': self.state.name}):
+            DirectDeviceServer()
+            self.assertEqual('helper', os.environ['ARTEMIS_HIERARCHY_BACKEND'])
 
     async def test_swipe_rejects_invalid_duration_before_device_access(self):
         with self.assertRaises(ValueError):

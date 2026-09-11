@@ -58,7 +58,7 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 | `wait_for_element` | Poll locally for a bounded UI condition and return a compact result |
 | `devices` | List connected device serials |
 | `screenshot` | Return a native MCP image |
-| `hierarchy` | Read UI elements without a separate OCR/model call |
+| `hierarchy` | Read UI elements without a separate OCR/model call, as the adapter's element view |
 | `tap` | Tap observed pixel coordinates |
 | `swipe` | Swipe between coordinates with an explicit duration |
 | `input_text` | Focus a field and enter or replace text |
@@ -87,6 +87,14 @@ works, while device operations require a connected target. Firebase Test Lab
 provisioning and cloud-only testing are not supplied by this adapter.
 Screenshots and UI text may contain private data and are returned to the host
 model. Use only devices and content permitted for that session.
+
+The adapter observes the accessibility helper but never provisions it, so it
+defaults `ARTEMIS_HIERARCHY_BACKEND` to `uiautomator`. Under upstream's `auto`
+the fallback client retries the helper every 30 seconds, and on a device with no
+helper installed each retry stops and restarts the UIAutomator2 server: measured
+here as one 11.6 s observation every 30 s against 0.33 s for the others. Set the
+variable yourself to keep another backend, including `auto` once the helper is
+installed through upstream's own provisioning path.
 
 ## Verification
 
@@ -140,6 +148,17 @@ Example tool arguments (fixture values only):
 For `input_element`, also supply `text` and optionally `clear_existing`.
 Action results use `status: action_sent`; they are not acceptance assertions.
 Input results do not echo the supplied text. Existing pixel tools stay available.
+
+`hierarchy` and every element result report the same element view: the five
+selector fields, `bounds`, and `enabled` as a JSON boolean whenever upstream
+states it, plus `checkable`, `checked`, `clickable`, `focused`, `long-clickable`,
+`scrollable` and `selected` only where they are true. `enabled` stays explicit
+even when false because that is what explains a refused action; a flag upstream
+leaves unknown is omitted. Upstream duplicates dropped from the view — `parsed_bounds`,
+`accessibilityText` — and per-node metadata such as `index`, `drawing-order`,
+`display-id` and `hint` are not part of any selector or action contract; the two
+screens measured here fell from 36.1 KB to 10.2 KB and 17.8 KB to 6.7 KB. Read
+the raw upstream hierarchy through the SDK when a dropped field is needed.
 
 `wait_for_element` supports `present`, `absent`, `enabled`, `disabled`, `focused`,
 `checked`, and `selected`. Timeout is 1–30000 ms (default 5000), polling interval

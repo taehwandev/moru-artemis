@@ -8,7 +8,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
-from tao_elements import ElementTools
+from tao_elements import ElementTools, element_view
 
 
 def _check_controller_factory(adb_server):
@@ -33,6 +33,11 @@ class DirectDeviceServer:
         os.environ['ARTEMIS_CLOUD_MODE'] = '0'
         os.environ['ARTEMIS_KEEP_DEVICE_AWAKE'] = 'false'
         os.environ.setdefault('ARTEMIS_APP_DIR', str(Path.home() / '.tao' / 'artemis'))
+        # This adapter observes the helper but never provisions it, so under
+        # 'auto' every 30s helper retry stops and restarts the UIAutomator2
+        # server on a device that has no helper. setdefault leaves an explicit
+        # operator choice, including 'auto' once the helper is installed, intact.
+        os.environ.setdefault('ARTEMIS_HIERARCHY_BACKEND', 'uiautomator')
         from artemis.mcp import adb_server
 
         from artemis.mcp.actuators.adb import ensure_focus_at_coords
@@ -72,7 +77,7 @@ class DirectDeviceServer:
     async def hierarchy(self, device_serial: str) -> str:
         """Return current UI elements without calling OCR or a model provider."""
         elements = await self._device(device_serial).get_ui_elements()
-        return json.dumps(elements, ensure_ascii=False)
+        return json.dumps([element_view(e) for e in elements], ensure_ascii=False)
 
     async def tap(self, device_serial: str, x: int, y: int) -> str:
         """Tap screen pixel coordinates verified against a current observation."""
