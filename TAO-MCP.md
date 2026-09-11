@@ -14,15 +14,26 @@ README are not measurements of this adapter.
 
 ## Install and connect
 
-Install Python 3.12, `uv`, and ADB. Clone this fork and use its existing lockfile.
-Device operations require an authorized Android device or running emulator;
-install the app under test through your normal build/install process:
+Use the same Python environment setup as upstream: install `uv`, clone the
+repository, and run `uv sync`. The project declares Python >=3.12 in
+`pyproject.toml`; uv selects or downloads a compatible interpreter, so a separate
+Python installation or a machine-specific `python3.12` executable is unnecessary.
+ADB and an authorized Android device or running emulator are needed for device
+operations. Install the app under test through your normal build/install process:
 
 ```sh
 git clone https://github.com/taehwandev/tao-artemis.git
 cd tao-artemis
-uv sync --frozen --no-dev --python python3.12
+uv sync
 ```
+
+Upstream [Quick Start](README.md#quick-start) uses `./start.sh` on macOS/Linux
+or `.\start.bat` on Windows. Those scripts also prepare system tools, launch the
+web UI, and offer to register the upstream autonomous MCP and global rules.
+For this host-driven adapter, use the shared `uv sync` environment step above
+and register `tao_mcp.py` below; running the web UI bootstrap is optional and
+does not configure this adapter. Keep the original upstream startup scripts
+unchanged. Use `uv sync --frozen` when reproducing an already-reviewed lockfile.
 
 Configure an MCP server named `tao-artemis` in each host with:
 
