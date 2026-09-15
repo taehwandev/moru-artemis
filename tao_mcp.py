@@ -8,6 +8,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
+from tao_comparison import ComparisonTools
 from tao_elements import ElementTools, element_view
 
 
@@ -55,6 +56,16 @@ class DirectDeviceServer:
         self.mcp.add_tool(elements.wait_for_element, annotations=ToolAnnotations(readOnlyHint=True))
         self.mcp.add_tool(elements.tap_element)
         self.mcp.add_tool(elements.input_element)
+
+        comparisons = ComparisonTools(self)
+        self.mcp.add_tool(
+            comparisons.capture_baseline,
+            annotations=ToolAnnotations(readOnlyHint=True),
+        )
+        self.mcp.add_tool(
+            comparisons.compare_current,
+            annotations=ToolAnnotations(readOnlyHint=True),
+        )
 
     def _device(self, device_serial: str):
         if not device_serial.strip():

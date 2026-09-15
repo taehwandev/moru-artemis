@@ -1,0 +1,137 @@
+"""Bounded in-memory baseline/current comparison for host-driven UI checks."""
+
+import base64
+import json
+from io import BytesIO
+
+from mcp.types import CallToolResult, ImageContent, TextContent
+
+from tao_elements import element_view
+
+
+_PIXEL_DELTA_THRESHOLD = 16
+_SEMANTIC_SAMPLE_LIMIT = 20
+
+
+class ComparisonTools:
+    """Keep one same-device observation pair without persisting screen content."""
+
+    def __init__(self, server):
+        self.server = server
+        self._baseline = None
+
+    async def capture_baseline(self, device_serial: str) -> CallToolResult:
+        """Capture the reference screen before replacing or changing the app under test."""
+        image, elements, dimensions = await self._capture(device_serial)
+        self._baseline = {
+            'device_serial': device_serial.strip(),
+            'image': image,
+            'elements': elements,
+            'dimensions': dimensions,
+        }
+        summary = {
+            'status': 'baseline_captured',
+            'device_serial': device_serial.strip(),
+            'dimensions': list(dimensions),
+            'element_count': len(elements),
+            'storage': 'memory_only',
+        }
+        return _observation_result(summary, image)
+
+    async def compare_current(self, device_serial: str) -> CallToolResult:
+        """Compare the current static screen with the captured same-device baseline.
+
+        The result reports differences, never a product pass/fail decision. Motion
+        still requires a recording or bounded frame sequence.
+        """
+        if self._baseline is None:
+            raise ValueError('Capture a baseline before comparing the current screen')
+        serial = device_serial.strip()
+        if serial != self._baseline['device_serial']:
+            raise ValueError('Baseline belongs to a different device_serial')
+
+        image, elements, dimensions = await self._capture(serial)
+        if dimensions != self._baseline['dimensions']:
+            raise ValueError(
+                'Screen dimensions changed; compare the same orientation and display state'
+            )
+
+        summary = {
+            'status': 'comparison_observed',
+            'device_serial': serial,
+            'dimensions': list(dimensions),
+            'pixel_delta': _pixel_delta(self._baseline['image'], image),
+            'semantic_delta': _semantic_delta(self._baseline['elements'], elements),
+            'verdict': 'host_must_compare_against_explicit_acceptance_criteria',
+        }
+        return _observation_result(summary, image)
+
+    async def _capture(self, device_serial):
+        controller = self.server._device(device_serial)
+        encoded = await controller.take_screenshot()
+        image = base64.b64decode(encoded, validate=True)
+        elements = tuple(element_view(item) for item in await controller.get_ui_elements())
+        return image, elements, _dimensions(image)
+
+
+def _dimensions(image):
+    from PIL import Image
+
+    with Image.open(BytesIO(image)) as decoded:
+        return decoded.size
+
+
+def _pixel_delta(before, current):
+    import numpy as np
+    from PIL import Image
+
+    with Image.open(BytesIO(before)) as first, Image.open(BytesIO(current)) as second:
+        first_pixels = np.asarray(first.convert('RGB'), dtype=np.int16)
+        second_pixels = np.asarray(second.convert('RGB'), dtype=np.int16)
+    delta = np.abs(first_pixels - second_pixels)
+    changed = np.any(delta >= _PIXEL_DELTA_THRESHOLD, axis=2)
+    return {
+        'changed_pixel_ratio': round(float(changed.mean()), 6),
+        'mean_absolute_channel_delta': round(float(delta.mean()), 3),
+        'threshold': _PIXEL_DELTA_THRESHOLD,
+    }
+
+
+def _semantic_delta(before, current):
+    def indexed(elements):
+        return {
+            json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(',', ':')): item
+            for item in elements
+        }
+
+    previous = indexed(before)
+    latest = indexed(current)
+    added_keys = sorted(latest.keys() - previous.keys())
+    removed_keys = sorted(previous.keys() - latest.keys())
+    return {
+        'baseline_element_count': len(before),
+        'current_element_count': len(current),
+        'added_count': len(added_keys),
+        'removed_count': len(removed_keys),
+        'added': [latest[key] for key in added_keys[:_SEMANTIC_SAMPLE_LIMIT]],
+        'removed': [previous[key] for key in removed_keys[:_SEMANTIC_SAMPLE_LIMIT]],
+        'samples_truncated': (
+            len(added_keys) > _SEMANTIC_SAMPLE_LIMIT
+            or len(removed_keys) > _SEMANTIC_SAMPLE_LIMIT
+        ),
+    }
+
+
+def _observation_result(summary, image):
+    return CallToolResult(
+        content=[
+            TextContent(type='text', text=json.dumps(summary, ensure_ascii=False)),
+            ImageContent(
+                type='image',
+                data=base64.b64encode(image).decode('ascii'),
+                mimeType='image/jpeg',
+            ),
+        ],
+        structuredContent=summary,
+        isError=False,
+    )

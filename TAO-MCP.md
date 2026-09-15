@@ -56,6 +56,8 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 | `tap_element` | Tap one exact UI match without host coordinate calculation |
 | `input_element` | Focus and type into one exact UI match |
 | `wait_for_element` | Poll locally for a bounded UI condition and return a compact result |
+| `capture_baseline` | Capture one same-device static reference in memory and return its image |
+| `compare_current` | Return the current image plus pixel and compact hierarchy deltas from that reference |
 | `devices` | List connected device serials |
 | `screenshot` | Return a native MCP image |
 | `hierarchy` | Read UI elements without a separate OCR/model call, as the adapter's element view |
@@ -73,6 +75,15 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 3. Use `screenshot` (native MCP image) and `hierarchy` to inspect the current UI.
 4. Use `tap`, `swipe`, `input_text`, `press_key`, or `launch_app` within the user's
    requested scope. Read the screen again to verify the result.
+
+For a regression or improvement claim, define the expected oracle first. Call
+`capture_baseline` on the known-good or pre-change build before replacing it, run
+the same bounded scenario on the candidate using the same device and display
+state, then call `compare_current`. Both calls include the observed screen image;
+the comparison also reports thresholded pixel change and compact added/removed UI
+elements. It deliberately returns no pass verdict: the host must evaluate the
+delta against explicit acceptance criteria. A current-state invariant can be
+verified without an older build, but must not be reported as a before/after claim.
 
 Registration alone does not route tests through MCP. The host workflow must
 select and call the tools. Tao's `device-testing` guidance supports preparation
@@ -129,6 +140,13 @@ live chat loaded the server. Confirm tool discovery in the active client and an
 actual observation before reporting device verification. Animation timing needs
 a sequence or recording; a single screenshot cannot establish motion behavior.
 
+`capture_baseline` keeps one observation in process memory, overwriting the prior
+one; the comparison helper itself does not write that screen content to disk.
+`compare_current` refuses a missing baseline, another device serial, or changed
+screen dimensions. It is for stable static states. Use matched recordings or
+bounded frame sequences for motion and keep the baseline/candidate trigger and
+interval the same.
+
 ## Element actions and local waits
 
 Prefer `tap_element` and `input_element` for accessible elements. Pass an explicit
@@ -169,11 +187,12 @@ failed condition, never a passing test. Device failures and ambiguous matches
 are errors, not proof of absence. Timeouts use cooperative async cancellation;
 a blocking upstream device call can delay return. This is not a motion recorder.
 
-Reconnect the host MCP client after updating to discover all 11 tools. Verify
+Reconnect the host MCP client after updating to discover all 13 tools. Verify
 new selection/wait contracts with:
 
 ```sh
 .venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_elements.py'
+.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_comparison.py'
 ```
 
 One element action replaces the usual host hierarchy-read/coordinate-calculation/

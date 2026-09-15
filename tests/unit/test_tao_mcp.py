@@ -42,8 +42,11 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         tools = {t.name: t for t in await self.server.mcp.list_tools()}
         self.assertEqual({'devices', 'screenshot', 'hierarchy', 'tap', 'swipe',
                           'input_text', 'press_key', 'launch_app', 'tap_element',
-                          'input_element', 'wait_for_element'}, set(tools))
+                          'input_element', 'wait_for_element', 'capture_baseline',
+                          'compare_current'}, set(tools))
         self.assertTrue(tools['wait_for_element'].annotations.readOnlyHint)
+        self.assertTrue(tools['capture_baseline'].annotations.readOnlyHint)
+        self.assertTrue(tools['compare_current'].annotations.readOnlyHint)
         for name, tool in tools.items():
             if name != 'devices':
                 self.assertIn('device_serial', tool.inputSchema['required'])
@@ -162,7 +165,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
                         initialized = await session.initialize()
                         self.assertEqual('tao-artemis', initialized.serverInfo.name)
                         tools = await session.list_tools()
-                        self.assertEqual(11, len(tools.tools))
+                        self.assertEqual(13, len(tools.tools))
                         missing = await session.call_tool('tap', {'x': 1, 'y': 2})
                         self.assertTrue(missing.isError)
                         for name in ('tap_element', 'input_element', 'wait_for_element'):
@@ -175,6 +178,10 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
                             'device_serial': 'fixture-device', 'selector': {},
                         })
                         self.assertTrue(invalid.isError)
+                        unprimed = await session.call_tool(
+                            'compare_current', {'device_serial': 'fixture-device'}
+                        )
+                        self.assertTrue(unprimed.isError)
 
 
 if __name__ == '__main__':
