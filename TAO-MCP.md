@@ -4,6 +4,10 @@ This is an independent fork of [Google's Artemis](https://github.com/google/arte
 not maintained, endorsed, or sponsored by Google. It retains the original
 Apache-2.0 source and copyright notices. Fork additions are distributed under
 the same [license](LICENSE). Google's trademarks are not licensed by Apache-2.0.
+Artemis derives parts of its device layer from
+[Mobile-Use](https://github.com/minitap-ai/mobile-use) by Minitap, Inc., whose
+NOTICE this fork carries in [NOTICE](NOTICE); the element parser this adapter
+reads the hierarchy through is theirs. Minitap is not affiliated with this fork.
 `tao_mcp.py` adds a small stdio MCP adapter for existing Codex or Claude sessions.
 The host reasons about screenshots/UI elements; Artemis executes explicit device
 operations. No Gemini, OpenAI or Anthropic API key is required for this adapter.
