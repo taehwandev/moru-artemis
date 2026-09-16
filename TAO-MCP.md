@@ -110,11 +110,23 @@ that discarded it paid for a capture nobody used: measured here as 1774 ms
 falling to 206 ms on the same screen, with the returned element view identical to
 `controller.get_ui_elements()`. `screenshot` is the mirror image: it captures
 through the screen client instead, skipping the hierarchy dump and the fixed
-settling pause the combined read adds, measured as 1142 ms falling to 410 ms.
-That pause protects an agent chaining actions in-process; these tools are
-separated by a host round trip that is far longer. A failed capture now raises
-instead of returning an empty image, and the result is always JPEG, where the
-combined read's own fallback could emit PNG under a `jpeg` label.
+settling pause the combined read adds. That pause protects an agent chaining
+actions in-process; these tools are separated by a host round trip that is far
+longer. A failed capture now raises instead of returning an empty image, and the
+result is always JPEG, where the combined read's own fallback could emit PNG
+under a `jpeg` label. On a Galaxy S22 the tool went from 1142 ms to 134 ms across
+that change and the capture-order fix below.
+
+Upstream captured through `adb screencap` and treated UIAutomator2 as the
+fallback, on the grounds that screencap is more reliable for layers such as
+popups. That did not survive measurement, so the order is now reversed here.
+Raising the notification shade changed 96.017% of the UIAutomator2 frame against
+95.886% of the screencap frame, with a 0.000% floor between two consecutive
+frames, so both see a system overlay; the adapter's own `screenshot` shows the
+same 95.804%. UIAutomator2 costs 107 ms against 480 ms on the same device, and it
+is what upstream Mobile-Use uses. `FLAG_SECURE` surfaces were not compared, so
+that case remains unmeasured. screencap still covers a UIAutomator2 failure, and
+a multi-display device's warning line no longer discards that capture.
 
 `capture_baseline`/`compare_current` deliberately keep the combined read,
 settling pause included, because they are the only callers that want both halves

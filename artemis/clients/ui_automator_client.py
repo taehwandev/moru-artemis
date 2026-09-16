@@ -176,6 +176,22 @@ def _png_payload(captured: bytes) -> bytes:
     return captured[start:] if start > 0 else captured
 
 
+def _screencap(device_id: str) -> Image.Image | None:
+    """Capture through `adb screencap`, the fallback when UIAutomator2 cannot."""
+    try:
+        result = subprocess.run(
+            adb_command(["-s", device_id, "exec-out", "screencap", "-p"]),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        return Image.open(BytesIO(_png_payload(result.stdout)))
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.warning(f"Failed to capture screenshot via adb: {e}")
+        return None
+
+
 def _pil_to_base64(img: Image.Image, format: str = "JPEG", quality: int = 80) -> str:
     """Convert PIL Image to base64 string with high-quality compression."""
     buffer = BytesIO()
@@ -404,27 +420,26 @@ class UIAutomatorClient:
     def get_screenshot(self) -> Image.Image | None:
         """Capture a screenshot from the device.
 
-        Uses adb screencap for more reliable capture of all layers (including
-        popups), falling back to UIAutomator2 if it fails.
+        Uses UIAutomator2, falling back to adb screencap if it fails.
+
+        The order used to be the other way round, on the grounds that screencap
+        is more reliable for layers such as popups. Measurement did not support
+        that: raising the notification shade changed 96.017% of the UIAutomator2
+        frame against 95.886% of the screencap frame, with a 0.000% floor between
+        two consecutive frames, so both see a system overlay. UIAutomator2 is
+        several times cheaper, 107 ms against 480 ms on a Galaxy S22, and is what
+        upstream Mobile-Use uses. FLAG_SECURE surfaces were not compared.
 
         Returns:
             PIL Image or None if capture failed
         """
         try:
-            result = subprocess.run(
-                adb_command(["-s", self._device_id, "exec-out", "screencap", "-p"]),
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                timeout=10,
-                check=True,
-            )
-            return Image.open(BytesIO(_png_payload(result.stdout)))
-        except (OSError, subprocess.SubprocessError) as e:
+            return self._ensure_connected().screenshot()
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(
-                f"Failed to capture screenshot via adb: {e}, falling back to uiautomator2"
+                f"Failed to capture screenshot via uiautomator2: {e}, falling back to adb"
             )
-            device = self._ensure_connected()
-            return device.screenshot()
+        return _screencap(self._device_id)
 
     def get_screenshot_base64(self) -> str | None:
         """Capture a screenshot and return as base64 string.
