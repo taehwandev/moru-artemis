@@ -77,6 +77,10 @@ class UIAutomatorScreenData(BaseModel):
     height: int
 
 
+#: The eight bytes every PNG starts with, per the PNG specification.
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
 def _parse_hierarchy_xml_to_elements(hierarchy_xml: str) -> list[dict]:
     """Parse uiautomator2 XML hierarchy into a flat list of element dictionaries.
 
@@ -158,6 +162,18 @@ def _parse_hierarchy_xml_to_elements(hierarchy_xml: str) -> list[dict]:
     _extract_element(root)
 
     return elements
+
+
+def _png_payload(captured: bytes) -> bytes:
+    """Drop anything `screencap` printed ahead of the PNG it produced.
+
+    A device with more than one display writes a `[Warning] Multiple displays...`
+    line to stdout before the image, which leaves the stream unparseable and
+    throws away a capture that actually succeeded. Returns the input unchanged
+    when no signature is found, so a genuinely broken capture still fails.
+    """
+    start = captured.find(_PNG_SIGNATURE)
+    return captured[start:] if start > 0 else captured
 
 
 def _pil_to_base64(img: Image.Image, format: str = "JPEG", quality: int = 80) -> str:
@@ -402,7 +418,7 @@ class UIAutomatorClient:
                 timeout=10,
                 check=True,
             )
-            return Image.open(BytesIO(result.stdout))
+            return Image.open(BytesIO(_png_payload(result.stdout)))
         except (OSError, subprocess.SubprocessError) as e:
             logger.warning(
                 f"Failed to capture screenshot via adb: {e}, falling back to uiautomator2"
