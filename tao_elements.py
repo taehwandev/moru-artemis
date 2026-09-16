@@ -76,8 +76,7 @@ class ElementTools:
 
     async def _target(self, device_serial, selector):
         selector = _selector(selector)
-        controller = self.server._device(device_serial)
-        element = _match(await controller.get_ui_elements(), selector)
+        element = _match(await self.server.elements(device_serial), selector)
         if element is None:
             raise ValueError('Element not found')
         return element, _center(element)
@@ -108,7 +107,6 @@ class ElementTools:
             raise ValueError('Unsupported UI state')
         if not 1 <= timeout_ms <= 30000 or not 100 <= poll_interval_ms <= 2000:
             raise ValueError('timeout_ms must be 1..30000; poll_interval_ms must be 100..2000')
-        controller = self.server._device(device_serial)
         start = time.monotonic()
         deadline = start + timeout_ms / 1000
         observations = 0
@@ -118,7 +116,8 @@ class ElementTools:
             if remaining <= 0:
                 break
             try:
-                elements = await asyncio.wait_for(controller.get_ui_elements(), remaining)
+                elements = await asyncio.wait_for(
+                    self.server.elements(device_serial), remaining)
             except asyncio.TimeoutError:
                 break
             observations += 1

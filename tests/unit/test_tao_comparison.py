@@ -23,16 +23,19 @@ def encoded_image(color, size=(4, 4)):
 
 class ComparisonToolsTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.controller = SimpleNamespace(
-            take_screenshot=AsyncMock(),
-            get_ui_elements=AsyncMock(),
-        )
+        # Comparison is the one caller that wants the screenshot and the hierarchy
+        # together, so it takes both from a single upstream screen read.
+        self.screen = SimpleNamespace(base64=None, elements=())
+        self.controller = SimpleNamespace(get_screen_data=AsyncMock(return_value=self.screen))
         self.server = SimpleNamespace(_device=Mock(return_value=self.controller))
         self.tools = ComparisonTools(self.server)
 
+    def observe(self, image, elements):
+        self.controller.get_screen_data.return_value = SimpleNamespace(
+            base64=image, elements=elements)
+
     async def test_baseline_is_memory_only_and_returns_the_observed_image(self):
-        self.controller.take_screenshot.return_value = encoded_image('black')
-        self.controller.get_ui_elements.return_value = [{'text': 'Before'}]
+        self.observe(encoded_image('black'), [{'text': 'Before'}])
 
         result = await self.tools.capture_baseline('device-a')
 
@@ -47,8 +50,7 @@ class ComparisonToolsTest(unittest.IsolatedAsyncioTestCase):
         self.server._device.assert_not_called()
 
     async def test_compare_refuses_another_device_before_observation(self):
-        self.controller.take_screenshot.return_value = encoded_image('black')
-        self.controller.get_ui_elements.return_value = []
+        self.observe(encoded_image('black'), [])
         await self.tools.capture_baseline('device-a')
         self.server._device.reset_mock()
 
@@ -57,13 +59,13 @@ class ComparisonToolsTest(unittest.IsolatedAsyncioTestCase):
         self.server._device.assert_not_called()
 
     async def test_compare_reports_pixel_and_compact_semantic_deltas_without_a_verdict(self):
-        self.controller.take_screenshot.side_effect = [
-            encoded_image('black'),
-            encoded_image('white'),
-        ]
-        self.controller.get_ui_elements.side_effect = [
-            [{'text': 'Before', 'bounds': '[0,0][2,2]', 'enabled': 'true'}],
-            [{'text': 'After', 'bounds': '[0,0][2,2]', 'enabled': 'true'}],
+        self.controller.get_screen_data.side_effect = [
+            SimpleNamespace(base64=encoded_image('black'),
+                            elements=[{'text': 'Before', 'bounds': '[0,0][2,2]',
+                                       'enabled': 'true'}]),
+            SimpleNamespace(base64=encoded_image('white'),
+                            elements=[{'text': 'After', 'bounds': '[0,0][2,2]',
+                                       'enabled': 'true'}]),
         ]
         await self.tools.capture_baseline('device-a')
 
@@ -78,11 +80,10 @@ class ComparisonToolsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('image', result.content[1].type)
 
     async def test_compare_rejects_changed_display_dimensions(self):
-        self.controller.take_screenshot.side_effect = [
-            encoded_image('black', (4, 4)),
-            encoded_image('black', (4, 5)),
+        self.controller.get_screen_data.side_effect = [
+            SimpleNamespace(base64=encoded_image('black', (4, 4)), elements=[]),
+            SimpleNamespace(base64=encoded_image('black', (4, 5)), elements=[]),
         ]
-        self.controller.get_ui_elements.return_value = []
         await self.tools.capture_baseline('device-a')
 
         with self.assertRaisesRegex(ValueError, 'dimensions changed'):

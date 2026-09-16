@@ -99,6 +99,25 @@ provisioning and cloud-only testing are not supplied by this adapter.
 Screenshots and UI text may contain private data and are returned to the host
 model. Use only devices and content permitted for that session.
 
+`hierarchy`, `tap_element`, `input_element` and `wait_for_element` read the UI
+dump on its own. Upstream's combined screen read returns a screenshot alongside
+the hierarchy and the screenshot dominates its cost, so an element observation
+that discarded it paid for a capture nobody used: measured here as 1774 ms
+falling to 206 ms on the same screen, with the returned element view identical to
+`controller.get_ui_elements()`. `screenshot` still takes the combined read, and
+`capture_baseline`/`compare_current` deliberately do too because they are the
+only callers that want both halves. That read is now taken once per capture
+rather than twice.
+
+Both paths call the same `dump_hierarchy(compressed=True)` and the same upstream
+parser, so the element list is the same one the combined read produces. They
+differ in where the filter's screen size comes from: the combined read refreshes
+it from each screenshot, while the dump-only path takes the size recorded when
+the controller was created. After a rotation those can disagree until the
+controller is recreated, which affects only which offscreen elements the filter
+prunes. Element bounds come from the dump either way, so `tap_element` and
+`input_element` still compute the same coordinates.
+
 The adapter observes the accessibility helper but never provisions it, so it
 defaults `ARTEMIS_HIERARCHY_BACKEND` to `uiautomator`. Under upstream's `auto`
 the fallback client retries the helper every 30 seconds, and on a device with no
@@ -129,10 +148,14 @@ The lazy-export regression tests protect the existing SDK exports.
 
 Text focus uses the exported `ensure_focus_at_coords` actuator helper. Controller
 creation still uses upstream's private `_get_controller`, which has no equivalent
-public factory in the pinned source. Startup checks its synchronous, explicit-serial
-call signature without opening a device and fails with a compatibility error on
-drift. This catches interface changes, not every behavioral change: run device
-observation/action checks before accepting an upstream update.
+public factory in the pinned source. Reading elements without a screenshot uses
+two more upstream internals: `_parse_hierarchy_xml_to_elements` from the Android
+driver and `filter_ui_hierarchy` from `artemis.utils.ui_filter`, neither of which
+the package exports. Startup checks all three call signatures without opening a
+device and fails with a compatibility error on drift. This catches interface
+changes, not every behavioral change: run device observation/action checks before
+accepting an upstream update, and compare the element view against
+`controller.get_ui_elements()` when upstream's parser or filter moves.
 
 A trace directory can be created during initialization; it is not evidence that
 a device tool ran. Likewise, configured host registration does not prove that a

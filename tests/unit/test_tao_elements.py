@@ -14,26 +14,28 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.element = {'text': 'Search', 'resource-id': 'app:id/search',
                         'bounds': '[10,20][110,60]', 'enabled': 'true'}
-        self.controller = SimpleNamespace(get_ui_elements=AsyncMock(return_value=[self.element]))
-        self.server = SimpleNamespace(_device=Mock(return_value=self.controller),
+        # The adapter reads elements through the server's hierarchy-only path, so
+        # that is the seam these contracts stub rather than a controller call.
+        self.observe = AsyncMock(return_value=[self.element])
+        self.server = SimpleNamespace(elements=self.observe,
                                       tap=AsyncMock(), input_text=AsyncMock())
         self.tools = ElementTools(self.server)
 
     async def test_exact_target_uses_bounds_and_explicit_device(self):
         result = await self.tools.tap_element('device-b', {'text': 'Search'})
-        self.server._device.assert_called_once_with('device-b')
+        self.observe.assert_awaited_once_with('device-b')
         self.server.tap.assert_awaited_once_with('device-b', 60, 40)
         self.assertEqual('action_sent', result['status'])
 
     async def test_duplicates_refuse_without_action(self):
-        self.controller.get_ui_elements.return_value = [self.element, dict(self.element)]
+        self.observe.return_value = [self.element, dict(self.element)]
         with self.assertRaisesRegex(ValueError, 'Ambiguous'):
             await self.tools.tap_element('device-b', {'text': 'Search'})
         self.server.tap.assert_not_awaited()
 
     async def test_selector_fields_are_combined_exactly(self):
         other = {**self.element, 'resource-id': 'other'}
-        self.controller.get_ui_elements.return_value = [other, self.element]
+        self.observe.return_value = [other, self.element]
         await self.tools.tap_element('device-b', {'text': 'Search', 'resource-id': 'app:id/search'})
         with self.assertRaisesRegex(ValueError, 'not found'):
             await self.tools.tap_element('device-b', {'text': 'Sea'})
@@ -42,12 +44,12 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
         for selector in ({}, {'index': '0'}, {'text': ''}, {'text': ' '}):
             with self.assertRaises(ValueError):
                 await self.tools.tap_element('device-b', selector)
-        self.server._device.assert_not_called()
+        self.observe.assert_not_awaited()
 
     async def test_disabled_unknown_or_invalid_bounds_refuse(self):
         for update in ({'enabled': 'false'}, {'enabled': None}, {'bounds': ''},
                        {'bounds': '[1,1][1,2]'}, {'bounds': '[-1,0][30,40]'}):
-            self.controller.get_ui_elements.return_value = [{**self.element, **update}]
+            self.observe.return_value = [{**self.element, **update}]
             with self.assertRaises(ValueError):
                 await self.tools.tap_element('device-b', {'text': 'Search'})
         self.server.tap.assert_not_awaited()
@@ -64,34 +66,35 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_wait_polls_locally_until_enabled(self):
         # Every hierarchy observation is a list, including transitional states.
-        self.controller.get_ui_elements.side_effect = [[], [{**self.element, 'enabled': 'false'}], [self.element]]
+        self.observe.side_effect = [[], [{**self.element, 'enabled': 'false'}], [self.element]]
         result = await self.tools.wait_for_element('device-b', {'text': 'Search'}, 'enabled', 1000, 100)
         self.assertTrue(result['matched'])
         self.assertEqual(3, result['observations'])
-        self.server._device.assert_called_once_with('device-b')
+        self.assertEqual([(('device-b',), {})] * 3,
+                         [(c.args, c.kwargs) for c in self.observe.await_args_list])
         self.server.tap.assert_not_awaited()
 
     async def test_timeout_is_not_success(self):
-        self.controller.get_ui_elements.return_value = []
+        self.observe.return_value = []
         result = await self.tools.wait_for_element('device-b', {'text': 'Search'}, timeout_ms=20)
         self.assertFalse(result['matched'])
         self.assertEqual('timeout', result['status'])
 
     async def test_absent_requires_successful_observation(self):
-        self.controller.get_ui_elements.return_value = []
+        self.observe.return_value = []
         self.assertTrue((await self.tools.wait_for_element('device-b', {'text': 'Search'}, 'absent'))['matched'])
-        self.controller.get_ui_elements.side_effect = RuntimeError('disconnected')
+        self.observe.side_effect = RuntimeError('disconnected')
         with self.assertRaisesRegex(RuntimeError, 'disconnected'):
             await self.tools.wait_for_element('device-b', {'text': 'Search'}, 'absent')
 
     async def test_wait_duplicates_are_not_success_or_absence(self):
-        self.controller.get_ui_elements.return_value = [self.element, self.element]
+        self.observe.return_value = [self.element, self.element]
         for state in ('present', 'absent', 'enabled'):
             with self.assertRaisesRegex(ValueError, 'Ambiguous'):
                 await self.tools.wait_for_element('device-b', {'text': 'Search'}, state)
 
     async def test_unknown_boolean_is_not_disabled(self):
-        self.controller.get_ui_elements.return_value = [{'text': 'Search'}]
+        self.observe.return_value = [{'text': 'Search'}]
         result = await self.tools.wait_for_element('device-b', {'text': 'Search'}, 'disabled', 20)
         self.assertFalse(result['matched'])
 
@@ -99,20 +102,20 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
         for state in ('enabled', 'disabled', 'focused', 'checked', 'selected'):
             key = 'enabled' if state == 'disabled' else state
             for value in ((False, 'false') if state == 'disabled' else (True, 'true')):
-                self.controller.get_ui_elements.return_value = [{**self.element, key: value}]
+                self.observe.return_value = [{**self.element, key: value}]
                 self.assertTrue((await self.tools.wait_for_element('device-b', {'text': 'Search'}, state))['matched'])
 
     async def test_invalid_wait_settings_fail_before_device_access(self):
         for kwargs in ({'state': 'anything'}, {'timeout_ms': 0}, {'timeout_ms': 30001}, {'poll_interval_ms': 1}):
             with self.assertRaises(ValueError):
                 await self.tools.wait_for_element('device-b', {'text': 'Search'}, **kwargs)
-        self.server._device.assert_not_called()
+        self.observe.assert_not_awaited()
 
     async def test_slow_async_observation_respects_deadline(self):
-        async def slow():
+        async def slow(_device_serial):
             await asyncio.sleep(10)
             return [self.element]
-        self.controller.get_ui_elements.side_effect = slow
+        self.observe.side_effect = slow
         async with asyncio.timeout(1):
             result = await self.tools.wait_for_element('device-b', {'text': 'Search'}, timeout_ms=20)
         self.assertFalse(result['matched'])

@@ -67,10 +67,11 @@ class ComparisonTools:
         return _observation_result(summary, image)
 
     async def _capture(self, device_serial):
-        controller = self.server._device(device_serial)
-        encoded = await controller.take_screenshot()
-        image = base64.b64decode(encoded, validate=True)
-        elements = tuple(element_view(item) for item in await controller.get_ui_elements())
+        # One screen read, not two: upstream returns the screenshot and the
+        # hierarchy together, and this is the only caller that wants both.
+        screen = await self.server._device(device_serial).get_screen_data()
+        image = base64.b64decode(screen.base64, validate=True)
+        elements = tuple(element_view(item) for item in screen.elements)
         return image, elements, _dimensions(image)
 
 

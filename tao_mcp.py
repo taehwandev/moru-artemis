@@ -1,5 +1,6 @@
 """Host-driven Android MCP: existing Codex/Claude reasoning, no model API calls."""
 
+import asyncio
 import base64
 import json
 import inspect
@@ -26,6 +27,51 @@ def _check_controller_factory(adb_server):
         ) from exc
 
 
+def _check_hierarchy_helpers(parse, prune):
+    """Fail at startup when the pinned upstream hierarchy helpers drift.
+
+    Reading the hierarchy without a screenshot means calling upstream's parser and
+    filter directly instead of the combined screen read, so their shapes are part
+    of this adapter's contract the same way the controller factory is. This checks
+    the call signatures only; behavioral drift still needs a device observation.
+    """
+    try:
+        if not callable(parse) or not callable(prune):
+            raise TypeError('expected callable hierarchy helpers')
+        inspect.signature(parse).bind('<hierarchy/>')
+        inspect.signature(prune).bind([], screen_width=1080, screen_height=2400)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            'Incompatible Artemis hierarchy helpers; restore the tested upstream '
+            'revision or update the tao-artemis adapter before device testing.'
+        ) from exc
+
+
+def _register_tools(server):
+    """Wire every tool onto the MCP server, read-only ones marked as such."""
+    read_only = ToolAnnotations(readOnlyHint=True)
+    elements = ElementTools(server)
+    comparisons = ComparisonTools(server)
+    for tool in (server.devices, server.screenshot, server.hierarchy,
+                 elements.wait_for_element, comparisons.capture_baseline,
+                 comparisons.compare_current):
+        server.mcp.add_tool(tool, annotations=read_only)
+    for tool in (server.tap, server.swipe, server.input_text, server.press_key,
+                 server.launch_app, elements.tap_element, elements.input_element):
+        server.mcp.add_tool(tool)
+
+
+def _read_elements(controller, parse, prune):
+    """Parse and prune one UI dump, off the event loop because the client blocks."""
+    device = controller.ctx.device
+    return prune(
+        parse(controller.ctx.ui_adb_client.get_hierarchy()),
+        # Upstream defaults the same way when the context has no dimensions.
+        screen_width=getattr(device, 'device_width', None) or 1080,
+        screen_height=getattr(device, 'device_height', None) or 2400,
+    )
+
+
 class DirectDeviceServer:
     """Small, explicitly targeted adapter around upstream Artemis controllers."""
 
@@ -42,30 +88,17 @@ class DirectDeviceServer:
         from artemis.mcp import adb_server
 
         from artemis.mcp.actuators.adb import ensure_focus_at_coords
+        from artemis.drivers.android.adb_driver import _parse_hierarchy_xml_to_elements
+        from artemis.utils.ui_filter import filter_ui_hierarchy
 
         _check_controller_factory(adb_server)
+        _check_hierarchy_helpers(_parse_hierarchy_xml_to_elements, filter_ui_hierarchy)
         self._ensure_focus = ensure_focus_at_coords
+        self._parse_hierarchy = _parse_hierarchy_xml_to_elements
+        self._prune_hierarchy = filter_ui_hierarchy
         self._adb = adb_server
         self.mcp = FastMCP('tao-artemis')
-        for tool in (self.devices, self.screenshot, self.hierarchy):
-            self.mcp.add_tool(tool, annotations=ToolAnnotations(readOnlyHint=True))
-        for tool in (self.tap, self.swipe, self.input_text, self.press_key, self.launch_app):
-            self.mcp.add_tool(tool)
-
-        elements = ElementTools(self)
-        self.mcp.add_tool(elements.wait_for_element, annotations=ToolAnnotations(readOnlyHint=True))
-        self.mcp.add_tool(elements.tap_element)
-        self.mcp.add_tool(elements.input_element)
-
-        comparisons = ComparisonTools(self)
-        self.mcp.add_tool(
-            comparisons.capture_baseline,
-            annotations=ToolAnnotations(readOnlyHint=True),
-        )
-        self.mcp.add_tool(
-            comparisons.compare_current,
-            annotations=ToolAnnotations(readOnlyHint=True),
-        )
+        _register_tools(self)
 
     def _device(self, device_serial: str):
         if not device_serial.strip():
@@ -85,9 +118,20 @@ class DirectDeviceServer:
         data = await self._device(device_serial).take_screenshot()
         return Image(data=base64.b64decode(data, validate=True), format='jpeg')
 
+    async def elements(self, device_serial: str) -> list[dict]:
+        """Read the UI hierarchy without the screenshot upstream captures with it.
+
+        That screenshot dominates the combined read's cost and every element caller
+        here discards it. Running the blocking client call off the event loop is
+        also what lets ``wait_for_element``'s timeout cancel an observation.
+        """
+        return await asyncio.to_thread(
+            _read_elements, self._device(device_serial),
+            self._parse_hierarchy, self._prune_hierarchy)
+
     async def hierarchy(self, device_serial: str) -> str:
         """Return current UI elements without calling OCR or a model provider."""
-        elements = await self._device(device_serial).get_ui_elements()
+        elements = await self.elements(device_serial)
         return json.dumps([element_view(e) for e in elements], ensure_ascii=False)
 
     async def tap(self, device_serial: str, x: int, y: int) -> str:
