@@ -104,10 +104,18 @@ dump on its own. Upstream's combined screen read returns a screenshot alongside
 the hierarchy and the screenshot dominates its cost, so an element observation
 that discarded it paid for a capture nobody used: measured here as 1774 ms
 falling to 206 ms on the same screen, with the returned element view identical to
-`controller.get_ui_elements()`. `screenshot` still takes the combined read, and
-`capture_baseline`/`compare_current` deliberately do too because they are the
-only callers that want both halves. That read is now taken once per capture
-rather than twice.
+`controller.get_ui_elements()`. `screenshot` is the mirror image: it captures
+through the screen client instead, skipping the hierarchy dump and the fixed
+settling pause the combined read adds, measured as 1142 ms falling to 410 ms.
+That pause protects an agent chaining actions in-process; these tools are
+separated by a host round trip that is far longer. A failed capture now raises
+instead of returning an empty image, and the result is always JPEG, where the
+combined read's own fallback could emit PNG under a `jpeg` label.
+
+`capture_baseline`/`compare_current` deliberately keep the combined read,
+settling pause included, because they are the only callers that want both halves
+and they compare against an earlier state. That read is now taken once per
+capture rather than twice.
 
 Both paths call the same `dump_hierarchy(compressed=True)` and the same upstream
 parser, so the element list is the same one the combined read produces. They

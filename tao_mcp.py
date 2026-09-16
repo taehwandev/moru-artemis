@@ -72,6 +72,20 @@ def _read_elements(controller, parse, prune):
     )
 
 
+def _read_screenshot(client) -> bytes:
+    """Capture one screenshot, off the event loop because the client blocks.
+
+    Going through the client skips the hierarchy dump and the fixed settling pause
+    the combined read adds, neither of which an image caller uses. The pause
+    protects an agent that chains actions in-process; these tools are separated by
+    a host round trip that is far longer.
+    """
+    encoded = client.get_screenshot_base64()
+    if not encoded:
+        raise RuntimeError('Screenshot capture failed')
+    return base64.b64decode(encoded, validate=True)
+
+
 class DirectDeviceServer:
     """Small, explicitly targeted adapter around upstream Artemis controllers."""
 
@@ -115,8 +129,9 @@ class DirectDeviceServer:
 
     async def screenshot(self, device_serial: str) -> Image:
         """Return the current device screen as an MCP image, not base64 text."""
-        data = await self._device(device_serial).take_screenshot()
-        return Image(data=base64.b64decode(data, validate=True), format='jpeg')
+        client = self._device(device_serial).ctx.ui_adb_client
+        return Image(data=await asyncio.to_thread(_read_screenshot, client),
+                     format='jpeg')
 
     async def elements(self, device_serial: str) -> list[dict]:
         """Read the UI hierarchy without the screenshot upstream captures with it.

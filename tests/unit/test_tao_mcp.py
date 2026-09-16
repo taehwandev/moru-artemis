@@ -50,12 +50,14 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.controller = Mock()
         self.controller.tap_at = AsyncMock(return_value=SimpleNamespace(error=None))
         self.controller.take_screenshot = AsyncMock(return_value=base64.b64encode(b'image').decode())
+        self.shot = Mock(return_value=base64.b64encode(b'image').decode())
         self.controller.press_key = AsyncMock(return_value=False)
         # hierarchy() now parses the dump itself instead of taking a screen read
         # that also captures a screenshot, so the fixture supplies real dump XML.
         self.dump = Mock(return_value=node_xml(text='Hello'))
         self.controller.ctx = SimpleNamespace(
-            ui_adb_client=SimpleNamespace(get_hierarchy=self.dump),
+            ui_adb_client=SimpleNamespace(get_hierarchy=self.dump,
+                                          get_screenshot_base64=self.shot),
             device=SimpleNamespace(device_width=1080, device_height=2400),
         )
         self.get = patch.object(self.server._adb, '_get_controller', return_value=self.controller)
@@ -89,18 +91,27 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await self.server.press_key('device-a', 'KEYCODE_BACK')
 
-    async def test_screenshot_is_native_mcp_image(self):
+    async def test_screenshot_is_native_mcp_image_and_skips_the_dump(self):
         result = await self.server.screenshot('device-a')
         content = result.to_image_content()
         self.assertEqual('image', content.type)
         self.assertEqual('image/jpeg', content.mimeType)
         self.assertEqual(b'image', base64.b64decode(content.data))
+        self.shot.assert_called_once_with()
+        self.dump.assert_not_called()
+
+    async def test_failed_capture_does_not_return_an_empty_image(self):
+        for failure in (None, ''):
+            self.shot.return_value = failure
+            with self.assertRaisesRegex(RuntimeError, 'Screenshot capture failed'):
+                await self.server.screenshot('device-a')
 
     async def test_hierarchy_reads_the_dump_without_capturing_a_screenshot(self):
         self.assertEqual([{'bounds': '[0,0][100,100]', 'class': 'android.widget.TextView',
                            'package': 'pkg', 'text': 'Hello', 'enabled': True}],
                          json.loads(await self.server.hierarchy('device-b')))
         self.dump.assert_called_once_with()
+        self.shot.assert_not_called()
         self.controller.take_screenshot.assert_not_awaited()
 
     def test_element_view_keeps_targeting_signal_and_drops_redundant_fields(self):
