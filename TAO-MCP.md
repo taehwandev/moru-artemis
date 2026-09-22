@@ -128,19 +128,35 @@ is what upstream Mobile-Use uses. `FLAG_SECURE` surfaces were not compared, so
 that case remains unmeasured. screencap still covers a UIAutomator2 failure, and
 a multi-display device's warning line no longer discards that capture.
 
-`capture_baseline`/`compare_current` deliberately keep the combined read,
-settling pause included, because they are the only callers that want both halves
-and they compare against an earlier state. That read is now taken once per
-capture rather than twice.
+`capture_baseline`/`compare_current` are the only callers that want both halves,
+and they now take each from this adapter's own screenshot and element reads, in
+the order upstream's combined read takes them, so the two halves stay as close
+together as that read makes them. What they no longer pay is its fixed 300 ms
+pre-capture pause: on a Galaxy S22+ a baseline went from 764 ms to 374 ms, the
+element view is the one the combined read produces on the same screen (76 of 76
+elements, identical), and two consecutive captures of a static screen still
+report a 0.000% pixel floor, so the pause was not what kept that floor clean.
+Nothing in the adapter calls the combined read any more.
 
-Both paths call the same `dump_hierarchy(compressed=True)` and the same upstream
-parser, so the element list is the same one the combined read produces. They
-differ in where the filter's screen size comes from: the combined read refreshes
-it from each screenshot, while the dump-only path takes the size recorded when
-the controller was created. After a rotation those can disagree until the
-controller is recreated, which affects only which offscreen elements the filter
-prunes. Element bounds come from the dump either way, so `tap_element` and
-`input_element` still compute the same coordinates.
+Every element read calls the same `dump_hierarchy(compressed=True)` and the same
+upstream parser and filter the combined read uses, so the element list is the
+one that read produces. What differs is where the filter's screen size comes
+from: the combined read refreshed it from each screenshot, while this path takes
+the size recorded when the controller was created. After a rotation the recorded
+size is stale until the controller is recreated, which affects only which
+offscreen elements the filter prunes; `compare_current` refuses a capture whose
+own image dimensions changed. Element bounds come from the dump either way, so
+`tap_element` and `input_element` still compute the same coordinates.
+
+Text input reads the screen once. Upstream's focus helper decides whether the
+field already holds focus, and so skips a redundant tap, from its own combined
+read; `input_element` had already observed that same field to compute its
+coordinates, so the decision now comes from that observation and the second read
+is gone. On a Galaxy S22+ the focus decision cost 758 ms through the helper and
+285 ms through this adapter's element read, and `input_element` no longer pays it
+twice. A failed observation refuses the action instead of tapping blindly, and
+an unfocused field is still tapped and given upstream's same one-second wait for
+the keyboard.
 
 The adapter observes the accessibility helper but never provisions it, so it
 defaults `ARTEMIS_HIERARCHY_BACKEND` to `uiautomator`. Under upstream's `auto`
@@ -170,12 +186,15 @@ initializer even when importing a specific submodule. Direct submodule imports
 alone cannot isolate this adapter from eager autonomous-agent initialization.
 The lazy-export regression tests protect the existing SDK exports.
 
-Text focus uses the exported `ensure_focus_at_coords` actuator helper. Controller
-creation still uses upstream's private `_get_controller`, which has no equivalent
-public factory in the pinned source. Reading elements without a screenshot uses
-two more upstream internals: `_parse_hierarchy_xml_to_elements` from the Android
-driver and `filter_ui_hierarchy` from `artemis.utils.ui_filter`, neither of which
-the package exports. Startup checks all three call signatures without opening a
+Text focus uses the exported `find_element_at_coords` actuator hit test, with the
+tap and the keyboard wait in the adapter, in place of the exported
+`ensure_focus_at_coords` helper that reads the screen a second time to make the
+same decision. Controller creation still uses upstream's private
+`_get_controller`, which has no equivalent public factory in the pinned source.
+Reading elements without a screenshot uses two more upstream internals:
+`_parse_hierarchy_xml_to_elements` from the Android driver and
+`filter_ui_hierarchy` from `artemis.utils.ui_filter`, neither of which the
+package exports. Startup checks all three call signatures without opening a
 device and fails with a compatibility error on drift. This catches interface
 changes, not every behavioral change: run device observation/action checks before
 accepting an upstream update, and compare the element view against

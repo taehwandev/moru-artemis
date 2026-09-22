@@ -18,7 +18,7 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
         # that is the seam these contracts stub rather than a controller call.
         self.observe = AsyncMock(return_value=[self.element])
         self.server = SimpleNamespace(elements=self.observe,
-                                      tap=AsyncMock(), input_text=AsyncMock())
+                                      tap=AsyncMock(), _type_into=AsyncMock())
         self.tools = ElementTools(self.server)
 
     async def test_exact_target_uses_bounds_and_explicit_device(self):
@@ -56,8 +56,16 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_input_forwards_options_without_echoing_text(self):
         result = await self.tools.input_element('device-b', {'text': 'Search'}, 'private input', True)
-        self.server.input_text.assert_awaited_once_with('device-b', 60, 40, 'private input', True)
+        self.server._type_into.assert_awaited_once_with(
+            'device-b', 60, 40, 'private input', True, False)
         self.assertNotIn('private input', str(result))
+
+    async def test_input_reads_the_screen_once_and_reuses_its_focus_state(self):
+        self.observe.return_value = [{**self.element, 'focused': 'true'}]
+        await self.tools.input_element('device-b', {'text': 'Search'}, 'private input')
+        self.observe.assert_awaited_once_with('device-b')
+        self.server._type_into.assert_awaited_once_with(
+            'device-b', 60, 40, 'private input', False, True)
 
     async def test_action_failure_propagates(self):
         self.server.tap.side_effect = RuntimeError('device refused')

@@ -67,11 +67,14 @@ class ComparisonTools:
         return _observation_result(summary, image)
 
     async def _capture(self, device_serial):
-        # One screen read, not two: upstream returns the screenshot and the
-        # hierarchy together, and this is the only caller that wants both.
-        screen = await self.server._device(device_serial).get_screen_data()
-        image = base64.b64decode(screen.base64, validate=True)
-        elements = tuple(element_view(item) for item in screen.elements)
+        # The adapter's own screenshot and element reads, in the order upstream's
+        # combined read takes them, so the two halves are as close together as
+        # that read makes them. What they skip is its fixed 300 ms pre-capture
+        # pause, which protects an agent chaining actions in-process and buys
+        # nothing between two tools a host round trip apart.
+        image = (await self.server.screenshot(device_serial)).data
+        elements = tuple(element_view(item)
+                         for item in await self.server.elements(device_serial))
         return image, elements, _dimensions(image)
 
 

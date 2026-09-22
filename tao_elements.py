@@ -56,6 +56,15 @@ def element_view(element):
     return view
 
 
+def is_focused(element):
+    """Whether upstream states this element currently holds input focus.
+
+    A missing element or an unknown flag is not focus: the caller then taps to
+    take it, exactly as upstream's own focus helper does.
+    """
+    return element is not None and _flag(element, 'focused') is True
+
+
 def _center(element):
     if _flag(element, 'enabled') is not True:
         raise ValueError('Element is disabled or enabled state is unknown; action refused')
@@ -89,9 +98,14 @@ class ElementTools:
 
     async def input_element(self, device_serial: str, selector: dict[str, str],
                             text: str, clear_existing: bool = False) -> dict:
-        """Focus and type into one exact match; text is never echoed in the result."""
+        """Focus and type into one exact match; text is never echoed in the result.
+
+        The focus decision comes from the observation the coordinates came from,
+        so this reads the screen once rather than twice.
+        """
         element, (x, y) = await self._target(device_serial, selector)
-        await self.server.input_text(device_serial, x, y, text, clear_existing)
+        await self.server._type_into(device_serial, x, y, text, clear_existing,
+                                     is_focused(element))
         return {'status': 'action_sent', 'point': [x, y]}
 
     async def wait_for_element(self, device_serial: str, selector: dict[str, str],

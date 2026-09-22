@@ -180,22 +180,42 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
             raise AssertionError('device access during startup')
         _check_controller_factory(SimpleNamespace(_get_controller=factory))
 
-    async def test_input_uses_public_focus_and_preserves_target(self):
-        from artemis.mcp.actuators.adb import ensure_focus_at_coords
-        self.assertIs(self.server._ensure_focus, ensure_focus_at_coords)
+    async def test_input_focuses_from_its_own_observation_not_a_second_one(self):
+        from artemis.mcp.actuators.adb import find_element_at_coords
+        self.assertIs(self.server._hit_test, find_element_at_coords)
+        self.dump.return_value = node_xml(**{'class': 'android.widget.EditText',
+                                             'focusable': 'true'})
         self.controller.type_text = AsyncMock(return_value=True)
-        with patch.object(self.server, '_ensure_focus', AsyncMock(return_value=None)) as focus:
-            self.assertEqual('Success', await self.server.input_text('device-b', 12, 34, 'hello', True))
-        self.mock_get.assert_called_once_with(device_serial='device-b')
-        focus.assert_awaited_once_with(self.controller, 12, 34)
+        with patch('tao_mcp.asyncio.sleep', AsyncMock()) as settle:
+            self.assertEqual('Success',
+                             await self.server.input_text('device-b', 50, 50, 'hello', True))
+        self.dump.assert_called_once_with()
+        self.shot.assert_not_called()
+        self.controller.tap_at.assert_awaited_once_with(x=50, y=50)
+        settle.assert_awaited_once()
         self.controller.type_text.assert_awaited_once_with('hello', clear_existing=True)
 
-    async def test_focus_failure_prevents_typing(self):
+    async def test_an_already_focused_field_is_typed_into_without_a_tap(self):
+        self.dump.return_value = node_xml(**{'class': 'android.widget.EditText',
+                                             'focusable': 'true', 'focused': 'true'})
+        self.controller.type_text = AsyncMock(return_value=True)
+        self.assertEqual('Success', await self.server.input_text('device-b', 50, 50, 'hello'))
+        self.controller.tap_at.assert_not_awaited()
+        self.controller.type_text.assert_awaited_once_with('hello', clear_existing=False)
+
+    async def test_a_failed_observation_refuses_to_type(self):
+        self.dump.side_effect = RuntimeError('dump failed')
         self.controller.type_text = AsyncMock()
-        with patch.object(self.server, '_ensure_focus', AsyncMock(return_value='focus failed')):
-            with self.assertRaisesRegex(RuntimeError, 'focus failed'):
-                await self.server.input_text('device-b', 12, 34, 'hello')
+        with self.assertRaisesRegex(RuntimeError, 'dump failed'):
+            await self.server.input_text('device-b', 12, 34, 'hello')
+        self.controller.tap_at.assert_not_awaited()
         self.controller.type_text.assert_not_awaited()
+
+    async def test_failed_typing_does_not_report_success(self):
+        self.controller.type_text = AsyncMock(return_value=False)
+        with patch('tao_mcp.asyncio.sleep', AsyncMock()):
+            with self.assertRaisesRegex(RuntimeError, 'Text input failed'):
+                await self.server.input_text('device-b', 12, 34, 'hello')
 
     async def test_stdio_initialize_and_schema_without_api_keys(self):
         from mcp import ClientSession, StdioServerParameters

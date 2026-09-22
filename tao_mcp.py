@@ -10,7 +10,10 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
 from tao_comparison import ComparisonTools
-from tao_elements import ElementTools, element_view
+from tao_elements import ElementTools, element_view, is_focused
+
+# Upstream's focus helper waits this long for the keyboard after tapping a field.
+_KEYBOARD_SETTLE_SECONDS = 1.0
 
 
 def _check_controller_factory(adb_server):
@@ -86,6 +89,23 @@ def _read_screenshot(client) -> bytes:
     return base64.b64decode(encoded, validate=True)
 
 
+async def _focus_and_type(controller, x, y, text, clear_existing, focused):
+    """Tap the field unless it already holds focus, then type into it.
+
+    Upstream's focus helper makes the same skip-the-tap decision, but reads the
+    screen again through the combined read to make it: the screenshot an element
+    read exists to avoid, paid once more per text input, and a second
+    observation that can disagree with the one the coordinates came from.
+    """
+    if not focused:
+        error = (await controller.tap_at(x=x, y=y)).error
+        if error:
+            raise RuntimeError(error)
+        await asyncio.sleep(_KEYBOARD_SETTLE_SECONDS)
+    if not await controller.type_text(text, clear_existing=clear_existing):
+        raise RuntimeError('Text input failed')
+
+
 class DirectDeviceServer:
     """Small, explicitly targeted adapter around upstream Artemis controllers."""
 
@@ -101,13 +121,13 @@ class DirectDeviceServer:
         os.environ.setdefault('ARTEMIS_HIERARCHY_BACKEND', 'uiautomator')
         from artemis.mcp import adb_server
 
-        from artemis.mcp.actuators.adb import ensure_focus_at_coords
+        from artemis.mcp.actuators.adb import find_element_at_coords
         from artemis.drivers.android.adb_driver import _parse_hierarchy_xml_to_elements
         from artemis.utils.ui_filter import filter_ui_hierarchy
 
         _check_controller_factory(adb_server)
         _check_hierarchy_helpers(_parse_hierarchy_xml_to_elements, filter_ui_hierarchy)
-        self._ensure_focus = ensure_focus_at_coords
+        self._hit_test = find_element_at_coords
         self._parse_hierarchy = _parse_hierarchy_xml_to_elements
         self._prune_hierarchy = filter_ui_hierarchy
         self._adb = adb_server
@@ -172,12 +192,15 @@ class DirectDeviceServer:
     async def input_text(self, device_serial: str, x: int, y: int,
                          text: str, clear_existing: bool = False) -> str:
         """Focus an observed text field and type text; optionally replace its contents."""
-        controller = self._device(device_serial)
-        error = await self._ensure_focus(controller, x, y)
-        if error:
-            raise RuntimeError(error)
-        if not await controller.type_text(text, clear_existing=clear_existing):
-            raise RuntimeError('Text input failed')
+        field = self._hit_test(await self.elements(device_serial), x, y)
+        return await self._type_into(device_serial, x, y, text, clear_existing,
+                                     is_focused(field))
+
+    async def _type_into(self, device_serial: str, x: int, y: int, text: str,
+                         clear_existing: bool, focused: bool) -> str:
+        """Type into the field the caller observed at these coordinates."""
+        await _focus_and_type(self._device(device_serial), x, y, text,
+                              clear_existing, focused)
         return 'Success'
 
     async def press_key(self, device_serial: str, keycode: str) -> str:
