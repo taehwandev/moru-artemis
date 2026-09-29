@@ -58,6 +58,7 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 | Tool | Purpose |
 | --- | --- |
 | `tap_element` | Tap one exact UI match without host coordinate calculation |
+| `tap_element_and_wait` | Tap one exact UI match, then check a bounded UI condition |
 | `input_element` | Focus and type into one exact UI match |
 | `wait_for_element` | Poll locally for a bounded UI condition and return a compact result |
 | `capture_baseline` | Capture one same-device static reference in memory and return its image |
@@ -103,7 +104,8 @@ provisioning and cloud-only testing are not supplied by this adapter.
 Screenshots and UI text may contain private data and are returned to the host
 model. Use only devices and content permitted for that session.
 
-`hierarchy`, `tap_element`, `input_element` and `wait_for_element` read the UI
+`hierarchy`, `tap_element`, `tap_element_and_wait`, `input_element` and
+`wait_for_element` read the UI
 dump on its own. Upstream's combined screen read returns a screenshot alongside
 the hierarchy and the screenshot dominates its cost, so an element observation
 that discarded it paid for a capture nobody used: measured here as 1774 ms
@@ -234,6 +236,14 @@ For `input_element`, also supply `text` and optionally `clear_existing`.
 Action results use `status: action_sent`; they are not acceptance assertions.
 Input results do not echo the supplied text. Existing pixel tools stay available.
 
+`tap_element_and_wait` takes the tap `selector` plus an `expected_selector` and
+optional `expected_state`, `timeout_ms`, and `poll_interval_ms` using the same
+rules as `wait_for_element`. It validates the expectation before tapping, then
+returns separate `action` and `verification` objects. Only
+`verification.matched: true` establishes that the expected state was observed;
+`action.status: action_sent` alone does not. Choose a condition that was not
+already true before the tap when verifying a transition.
+
 `hierarchy` and every element result report the same element view: the five
 selector fields, `bounds`, and `enabled` as a JSON boolean whenever upstream
 states it, plus `checkable`, `checked`, `clickable`, `focused`, `long-clickable`,
@@ -254,7 +264,7 @@ failed condition, never a passing test. Device failures and ambiguous matches
 are errors, not proof of absence. Timeouts use cooperative async cancellation;
 a blocking upstream device call can delay return. This is not a motion recorder.
 
-Reconnect the host MCP client after updating to discover all 13 tools. Verify
+Reconnect the host MCP client after updating to discover all 14 tools. Verify
 new selection/wait contracts with:
 
 ```sh

@@ -68,7 +68,8 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         tools = {t.name: t for t in await self.server.mcp.list_tools()}
         self.assertEqual({'devices', 'screenshot', 'hierarchy', 'tap', 'swipe',
                           'input_text', 'press_key', 'launch_app', 'tap_element',
-                          'input_element', 'wait_for_element', 'capture_baseline',
+                          'tap_element_and_wait', 'input_element', 'wait_for_element',
+                          'capture_baseline',
                           'compare_current'}, set(tools))
         self.assertTrue(tools['wait_for_element'].annotations.readOnlyHint)
         self.assertTrue(tools['capture_baseline'].annotations.readOnlyHint)
@@ -233,13 +234,16 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
                         initialized = await session.initialize()
                         self.assertEqual('tao-artemis', initialized.serverInfo.name)
                         tools = await session.list_tools()
-                        self.assertEqual(13, len(tools.tools))
+                        self.assertEqual(14, len(tools.tools))
                         missing = await session.call_tool('tap', {'x': 1, 'y': 2})
                         self.assertTrue(missing.isError)
-                        for name in ('tap_element', 'input_element', 'wait_for_element'):
+                        for name in ('tap_element', 'tap_element_and_wait',
+                                     'input_element', 'wait_for_element'):
                             arguments = {'selector': {'text': 'Search'}}
                             if name == 'input_element':
                                 arguments['text'] = 'fixture'
+                            if name == 'tap_element_and_wait':
+                                arguments['expected_selector'] = {'text': 'Results'}
                             result = await session.call_tool(name, arguments)
                             self.assertTrue(result.isError, name)
                         invalid = await session.call_tool('wait_for_element', {

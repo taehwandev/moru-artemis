@@ -72,6 +72,44 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, 'device refused'):
             await self.tools.tap_element('device-b', {'text': 'Search'})
 
+    async def test_tap_and_wait_observes_after_action_on_same_device(self):
+        result_element = {'text': 'Results', 'enabled': 'true'}
+
+        async def observe(_device_serial):
+            return [result_element] if self.server.tap.await_count else [self.element]
+
+        self.observe.side_effect = observe
+        result = await self.tools.tap_element_and_wait(
+            'device-b', {'text': 'Search'}, {'text': 'Results'}, timeout_ms=1000)
+        self.server.tap.assert_awaited_once_with('device-b', 60, 40)
+        self.assertEqual([(('device-b',), {})] * 2,
+                         [(call.args, call.kwargs) for call in self.observe.await_args_list])
+        self.assertEqual('action_sent', result['action']['status'])
+        self.assertTrue(result['verification']['matched'])
+        self.assertEqual('Results', result['verification']['element']['text'])
+
+    async def test_tap_and_wait_timeout_does_not_claim_verified_action(self):
+        async def observe(_device_serial):
+            return [] if self.server.tap.await_count else [self.element]
+
+        self.observe.side_effect = observe
+        result = await self.tools.tap_element_and_wait(
+            'device-b', {'text': 'Search'}, {'text': 'Results'}, timeout_ms=20)
+        self.server.tap.assert_awaited_once()
+        self.assertFalse(result['verification']['matched'])
+        self.assertEqual('timeout', result['verification']['status'])
+
+    async def test_tap_and_wait_rejects_invalid_expectation_before_action(self):
+        for options in ({'expected_selector': {}},
+                        {'expected_state': 'anything'},
+                        {'timeout_ms': 0},
+                        {'poll_interval_ms': 1}):
+            kwargs = {'expected_selector': {'text': 'Results'}, **options}
+            with self.assertRaises(ValueError):
+                await self.tools.tap_element_and_wait('device-b', {'text': 'Search'}, **kwargs)
+        self.observe.assert_not_awaited()
+        self.server.tap.assert_not_awaited()
+
     async def test_wait_polls_locally_until_enabled(self):
         # Every hierarchy observation is a list, including transitional states.
         self.observe.side_effect = [[], [{**self.element, 'enabled': 'false'}], [self.element]]

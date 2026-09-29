@@ -96,6 +96,22 @@ class ElementTools:
         await self.server.tap(device_serial, x, y)
         return {'status': 'action_sent', 'element': element_view(element), 'point': [x, y]}
 
+    async def tap_element_and_wait(self, device_serial: str, selector: dict[str, str],
+                                   expected_selector: dict[str, str],
+                                   expected_state: str = 'present',
+                                   timeout_ms: int = 5000,
+                                   poll_interval_ms: int = 250) -> dict:
+        """Tap an exact match, then observe a bounded post-action condition."""
+        expected_selector = _selector(expected_selector)
+        if expected_state not in _STATES:
+            raise ValueError('Unsupported UI state')
+        if not 1 <= timeout_ms <= 30000 or not 100 <= poll_interval_ms <= 2000:
+            raise ValueError('timeout_ms must be 1..30000; poll_interval_ms must be 100..2000')
+        action = await self.tap_element(device_serial, selector)
+        verification = await self.wait_for_element(
+            device_serial, expected_selector, expected_state, timeout_ms, poll_interval_ms)
+        return {'action': action, 'verification': verification}
+
     async def input_element(self, device_serial: str, selector: dict[str, str],
                             text: str, clear_existing: bool = False) -> dict:
         """Focus and type into one exact match; text is never echoed in the result.
