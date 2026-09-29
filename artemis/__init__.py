@@ -18,6 +18,10 @@
 """☕ ARTEMIS: Autonomous Multimodal Android Agent & Testing Framework."""
 
 from artemis._version import __version__
+from artemis import _legacy_imports
+
+# Old import paths of the modules moved to third_party/ (deprecated).
+_legacy_imports.install()
 
 # Load optional SDK/agent dependencies only when their public exports are used.
 # Importing a device MCP submodule must not bootstrap the autonomous agent.

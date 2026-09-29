@@ -191,8 +191,9 @@ tap and the keyboard wait in the adapter, in place of the exported
 `ensure_focus_at_coords` helper that reads the screen a second time to make the
 same decision. Controller creation still uses upstream's private
 `_get_controller`, which has no equivalent public factory in the pinned source.
-Reading elements without a screenshot uses two more upstream internals:
-`_parse_hierarchy_xml_to_elements` from the Android driver and
+Reading elements without a screenshot uses two more upstream helpers:
+`parse_hierarchy_xml_to_elements` from
+`third_party.mobile_use.clients.ui_automator_client` and
 `filter_ui_hierarchy` from `artemis.utils.ui_filter`, neither of which the
 package exports. Startup checks all three call signatures without opening a
 device and fails with a compatibility error on drift. This catches interface

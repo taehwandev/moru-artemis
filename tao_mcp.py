@@ -122,13 +122,13 @@ class DirectDeviceServer:
         from artemis.mcp import adb_server
 
         from artemis.mcp.actuators.adb import find_element_at_coords
-        from artemis.drivers.android.adb_driver import _parse_hierarchy_xml_to_elements
+        from third_party.mobile_use.clients.ui_automator_client import parse_hierarchy_xml_to_elements
         from artemis.utils.ui_filter import filter_ui_hierarchy
 
         _check_controller_factory(adb_server)
-        _check_hierarchy_helpers(_parse_hierarchy_xml_to_elements, filter_ui_hierarchy)
+        _check_hierarchy_helpers(parse_hierarchy_xml_to_elements, filter_ui_hierarchy)
         self._hit_test = find_element_at_coords
-        self._parse_hierarchy = _parse_hierarchy_xml_to_elements
+        self._parse_hierarchy = parse_hierarchy_xml_to_elements
         self._prune_hierarchy = filter_ui_hierarchy
         self._adb = adb_server
         self.mcp = FastMCP('tao-artemis')
