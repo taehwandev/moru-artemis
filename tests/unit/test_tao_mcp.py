@@ -69,7 +69,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({'devices', 'screenshot', 'hierarchy', 'tap', 'swipe',
                           'input_text', 'press_key', 'launch_app', 'tap_element',
                           'tap_element_and_wait', 'input_element', 'wait_for_element',
-                          'capture_baseline',
+                          'capture_baseline', 'perf_frame_stats', 'record_frames',
                           'compare_current'}, set(tools))
         self.assertTrue(tools['wait_for_element'].annotations.readOnlyHint)
         self.assertTrue(tools['capture_baseline'].annotations.readOnlyHint)
@@ -82,6 +82,19 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.server.tap(' ', 12, 34)
         self.mock_get.assert_not_called()
+
+    def test_perf_device_resolves_explicit_serial_without_ui_controller(self):
+        from tao_adb import selected_adb_device
+        selected = SimpleNamespace(serial='device-b')
+        with patch.object(self.server._adb, 'AdbClient') as client:
+            client.return_value.device_list.return_value = [
+                SimpleNamespace(serial='device-a'), selected]
+            with patch.dict(os.environ, {'ADB_HOST': 'remote-host', 'ADB_PORT': '5040'}):
+                self.assertIs(selected, selected_adb_device(self.server._adb, 'device-b'))
+                client.assert_called_once_with(host='remote-host', port=5040)
+        self.mock_get.assert_not_called()
+        with self.assertRaises(ValueError):
+            selected_adb_device(self.server._adb, ' ')
 
     async def test_tap_forwards_exact_device_and_pixels(self):
         self.assertEqual('Success', await self.server.tap('device-b', 12, 34))
@@ -154,6 +167,38 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         for dropped in ('parsed_bounds', 'accessibilityText', 'index',
                         'password', 'focusable', 'scrollable'):
             self.assertNotIn(dropped, observed[0])
+
+    async def test_hierarchy_filters_package_labels_and_bounds(self):
+        elements = [
+            {'package': 'ime', 'text': 'Keyboard', 'bounds': '[0,100][100,200]'},
+            {'package': 'example.app', 'text': 'Search', 'bounds': '[0,0][100,50]'},
+            {'package': 'example.app', 'content-desc': 'Send', 'bounds': '[0,50][100,100]'},
+            {'package': 'example.app', 'bounds': '[100,50][200,100]'},
+        ]
+        with patch.object(self.server, 'elements', AsyncMock(return_value=elements)) as read:
+            result = json.loads(await self.server.hierarchy(
+                'device-b', package='example.app', max_nodes=1, labeled_only=True))
+            bounds = json.loads(await self.server.hierarchy(
+                'device-b', package='example.app', labeled_only=True, bounds_only=True))
+        self.assertEqual([{'bounds': '[0,0][100,50]', 'package': 'example.app',
+                           'text': 'Search'}], result)
+        self.assertEqual([{'bounds': '[0,0][100,50]'},
+                          {'bounds': '[0,50][100,100]'}], bounds)
+        self.assertEqual(2, read.await_count)
+
+    async def test_filtered_hierarchy_is_valid_json_bounded_to_four_kib(self):
+        elements = [{'package': 'example.app', 'text': '한' * 500,
+                     'content-desc': '긴' * 500, 'bounds': '[0,0][100,100]'}] * 64
+        with patch.object(self.server, 'elements', AsyncMock(return_value=elements)):
+            output = await self.server.hierarchy('device-b', max_nodes=64)
+        self.assertLessEqual(len(output.encode('utf-8')), 4096)
+        self.assertGreater(len(json.loads(output)), 0)
+
+    async def test_invalid_hierarchy_filters_do_not_access_device(self):
+        for options in ({'package': ''}, {'max_nodes': 0}, {'max_nodes': 65}):
+            with self.assertRaises(ValueError):
+                await self.server.hierarchy('device-b', **options)
+        self.mock_get.assert_not_called()
 
     def test_hierarchy_backend_is_pinned_but_never_overrides_an_explicit_choice(self):
         from tao_mcp import DirectDeviceServer
@@ -234,7 +279,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
                         initialized = await session.initialize()
                         self.assertEqual('tao-artemis', initialized.serverInfo.name)
                         tools = await session.list_tools()
-                        self.assertEqual(14, len(tools.tools))
+                        self.assertEqual(16, len(tools.tools))
                         missing = await session.call_tool('tap', {'x': 1, 'y': 2})
                         self.assertTrue(missing.isError)
                         for name in ('tap_element', 'tap_element_and_wait',

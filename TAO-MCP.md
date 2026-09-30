@@ -61,11 +61,13 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 | `tap_element_and_wait` | Tap one exact UI match, then check a bounded UI condition |
 | `input_element` | Focus and type into one exact UI match |
 | `wait_for_element` | Poll locally for a bounded UI condition and return a compact result |
+| `perf_frame_stats` | Reset or summarize one app's Android frame timing counters |
+| `record_frames` | Return a short screen recording as a bounded PNG frame sheet |
 | `capture_baseline` | Capture one same-device static reference in memory and return its image |
 | `compare_current` | Return the current image plus pixel and compact hierarchy deltas from that reference |
 | `devices` | List connected device serials |
 | `screenshot` | Return a native MCP image |
-| `hierarchy` | Read UI elements without a separate OCR/model call, as the adapter's element view |
+| `hierarchy` | Read UI elements, optionally filtering by package, labels, count, or bounds |
 | `tap` | Tap observed pixel coordinates |
 | `swipe` | Swipe between coordinates with an explicit duration |
 | `input_text` | Focus a field and enter or replace text |
@@ -255,6 +257,39 @@ leaves unknown is omitted. Upstream duplicates dropped from the view — `parsed
 screens measured here fell from 36.1 KB to 10.2 KB and 17.8 KB to 6.7 KB. Read
 the raw upstream hierarchy through the SDK when a dropped field is needed.
 
+For a large screen, call `hierarchy` with exact `package`, `labeled_only: true`,
+`max_nodes` (1–64), or `bounds_only: true`. `labeled_only` keeps nodes with text
+or a content description; `bounds_only` returns only bounds after other filters.
+Filtered calls return a valid JSON array capped at 4 KiB of UTF-8 text, with
+string fields shortened to 128 characters and at most 64 nodes. The cap bounds
+transport text rather than claiming an exact model token count. A call with no
+filter keeps the existing full-array behavior for compatibility. Filtering may
+omit later nodes, so narrow by package and label before treating the result as
+a complete screen inventory.
+
+`perf_frame_stats` requires `device_serial` and `package_name`. Use
+`action: "reset"` immediately before a scenario and `action: "read"` afterward;
+`stages` defaults to true. The read result contains total/janky frames, jank
+percentage, frame-time p50/p90/p95/p99, missed-vsync, slow-UI-thread and
+slow-draw-command counts. With stages enabled, it also reports the parsed
+framestats frame count and p50/p90/p99 milliseconds for input→traversal,
+measure/layout, draw recording, render thread and swap. Missing device counters
+are null rather than fabricated zeros. The raw `dumpsys gfxinfo` output is never
+returned to the host. These are app-rendering counters, not a full display or
+GPU trace; reset/read must target the same device and package.
+
+`record_frames` accepts `seconds` (1–10), `fps` (1–4), and optional pixel
+`crop: [left, top, right, bottom]`; `seconds * fps` must be at most 16. It
+returns one native MCP PNG image of at most 16 labeled frames on a canvas no
+larger than 1024×1024 pixels. Recording runs while the tool call is active;
+trigger the UI action concurrently from another tool call to capture its
+transition. The tool removes its temporary host file and attempts to remove the
+device file even on failure. The target display must be active; a device that
+reports `INVALID_LAYER_STACK` returns a display-state error. Android
+screenrecord has no audio and does not handle rotation during capture reliably.
+The image size bounds visual input, but the host model determines its actual
+image-token cost.
+
 `wait_for_element` supports `present`, `absent`, `enabled`, `disabled`, `focused`,
 `checked`, and `selected`. Timeout is 1–30000 ms (default 5000), polling interval
 100–2000 ms (default 250). Polling runs inside one tool call without additional
@@ -264,12 +299,13 @@ failed condition, never a passing test. Device failures and ambiguous matches
 are errors, not proof of absence. Timeouts use cooperative async cancellation;
 a blocking upstream device call can delay return. This is not a motion recorder.
 
-Reconnect the host MCP client after updating to discover all 14 tools. Verify
+Reconnect the host MCP client after updating to discover all 16 tools. Verify
 new selection/wait contracts with:
 
 ```sh
 .venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_elements.py'
 .venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_comparison.py'
+.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_perf.py'
 ```
 
 One element action replaces the usual host hierarchy-read/coordinate-calculation/

@@ -9,8 +9,10 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
+from tao_adb import adb_client
 from tao_comparison import ComparisonTools
 from tao_elements import ElementTools, element_view, is_focused
+from tao_perf import PerformanceTools
 
 # Upstream's focus helper waits this long for the keyboard after tapping a field.
 _KEYBOARD_SETTLE_SECONDS = 1.0
@@ -55,13 +57,15 @@ def _register_tools(server):
     read_only = ToolAnnotations(readOnlyHint=True)
     elements = ElementTools(server)
     comparisons = ComparisonTools(server)
+    performance = PerformanceTools(server)
     for tool in (server.devices, server.screenshot, server.hierarchy,
                  elements.wait_for_element, comparisons.capture_baseline,
                  comparisons.compare_current):
         server.mcp.add_tool(tool, annotations=read_only)
     for tool in (server.tap, server.swipe, server.input_text, server.press_key,
                  server.launch_app, elements.tap_element, elements.tap_element_and_wait,
-                 elements.input_element):
+                 elements.input_element, performance.perf_frame_stats,
+                 performance.record_frames):
         server.mcp.add_tool(tool)
 
 
@@ -107,6 +111,25 @@ async def _focus_and_type(controller, x, y, text, clear_existing, focused):
         raise RuntimeError('Text input failed')
 
 
+def _hierarchy_json(views, package, max_nodes, labeled_only, bounds_only):
+    if package is not None:
+        views = [view for view in views if view.get('package') == package]
+    if labeled_only:
+        views = [view for view in views if view.get('text') or view.get('content-desc')]
+    if bounds_only:
+        views = [{'bounds': view['bounds']} for view in views if 'bounds' in view]
+    if package is None and max_nodes is None and not labeled_only and not bounds_only:
+        return json.dumps(views, ensure_ascii=False)
+    selected = []
+    for view in views[:max_nodes or 64]:
+        bounded = {key: value[:128] if isinstance(value, str) else value
+                   for key, value in view.items()}
+        if len(json.dumps([*selected, bounded], ensure_ascii=False).encode('utf-8')) > 4096:
+            break
+        selected.append(bounded)
+    return json.dumps(selected, ensure_ascii=False)
+
+
 class DirectDeviceServer:
     """Small, explicitly targeted adapter around upstream Artemis controllers."""
 
@@ -142,10 +165,7 @@ class DirectDeviceServer:
 
     def devices(self) -> list[str]:
         """List connected ADB device serials. Select the intended device explicitly."""
-        adb = self._adb.AdbClient(
-            host=os.environ.get('ADB_SERVER_HOST', '127.0.0.1'),
-            port=int(os.environ.get('ADB_SERVER_PORT', '5037')),
-        )
+        adb = adb_client(self._adb)
         return [device.serial for device in adb.device_list()]
 
     async def screenshot(self, device_serial: str) -> Image:
@@ -165,10 +185,17 @@ class DirectDeviceServer:
             _read_elements, self._device(device_serial),
             self._parse_hierarchy, self._prune_hierarchy)
 
-    async def hierarchy(self, device_serial: str) -> str:
-        """Return current UI elements without calling OCR or a model provider."""
+    async def hierarchy(self, device_serial: str, package: str | None = None,
+                        max_nodes: int | None = None, labeled_only: bool = False,
+                        bounds_only: bool = False) -> str:
+        """Return UI elements, optionally filtered to a bounded JSON array."""
+        if package is not None and (not isinstance(package, str) or not package.strip()):
+            raise ValueError('package must be a nonempty exact package name')
+        if max_nodes is not None and (type(max_nodes) is not int or not 1 <= max_nodes <= 64):
+            raise ValueError('max_nodes must be 1..64')
         elements = await self.elements(device_serial)
-        return json.dumps([element_view(e) for e in elements], ensure_ascii=False)
+        return _hierarchy_json([element_view(e) for e in elements], package,
+                               max_nodes, labeled_only, bounds_only)
 
     async def tap(self, device_serial: str, x: int, y: int) -> str:
         """Tap screen pixel coordinates verified against a current observation."""
