@@ -69,7 +69,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({'devices', 'screenshot', 'hierarchy', 'tap', 'swipe',
                           'input_text', 'press_key', 'launch_app', 'tap_element',
                           'tap_element_and_wait', 'input_element', 'wait_for_element',
-                          'capture_baseline', 'perf_frame_stats', 'record_frames',
+                          'capture_baseline', 'perf_frame_stats', 'record_frames', 'scroll_to_element',
                           'compare_current'}, set(tools))
         self.assertTrue(tools['wait_for_element'].annotations.readOnlyHint)
         self.assertTrue(tools['capture_baseline'].annotations.readOnlyHint)
@@ -279,7 +279,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
                         initialized = await session.initialize()
                         self.assertEqual('tao-artemis', initialized.serverInfo.name)
                         tools = await session.list_tools()
-                        self.assertEqual(16, len(tools.tools))
+                        self.assertEqual(17, len(tools.tools))
                         missing = await session.call_tool('tap', {'x': 1, 'y': 2})
                         self.assertTrue(missing.isError)
                         for name in ('tap_element', 'tap_element_and_wait',

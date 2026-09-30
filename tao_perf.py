@@ -5,6 +5,7 @@ import io
 import math
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from uuid import uuid4
@@ -73,7 +74,7 @@ def _parse_gfxinfo(output, include_stages=True):
         f'p{level}': count(rf'^\s*{level}th percentile:\s*(\d+)ms')
         for level in (50, 90, 95, 99)
     }
-    result['frame_time_ms'] = (summary_percentiles if all(
+    result['frame_time_ms'] = (summary_percentiles if any(
         value is not None for value in summary_percentiles.values()) else None)
 
     if include_stages:
@@ -89,8 +90,11 @@ def _parse_gfxinfo(output, include_stages=True):
                     durations[name].append((finish - begin) / 1_000_000)
         result['framestats_frames'] = len(frame_durations)
         result['stage_ms'] = {name: percentiles(values) for name, values in durations.items()}
-        if result['frame_time_ms'] is None:
-            result['frame_time_ms'] = percentiles(frame_durations, (50, 90, 95, 99))
+        fallback = percentiles(frame_durations, (50, 90, 95, 99))
+        if fallback is not None:
+            result['frame_time_ms'] = {
+                name: value if value is not None else fallback[name]
+                for name, value in summary_percentiles.items()}
     return result
 
 
@@ -138,7 +142,13 @@ def _record_sheet(device, seconds, fps, crop):
             sheet.save(data, format='PNG', optimize=True)
             return data.getvalue()
     finally:
-        device.shell(f'rm -f {remote}', timeout=5)
+        original_error = sys.exception()
+        try:
+            device.shell(f'rm -f {remote}', timeout=5)
+        except Exception as cleanup_error:
+            if original_error is None:
+                raise RuntimeError('Temporary device recording cleanup failed') from cleanup_error
+            original_error.add_note('Temporary device recording cleanup also failed')
 
 
 class PerformanceTools:

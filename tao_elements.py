@@ -96,6 +96,36 @@ class ElementTools:
         await self.server.tap(device_serial, x, y)
         return {'status': 'action_sent', 'element': element_view(element), 'point': [x, y]}
 
+    async def scroll_to_element(self, device_serial: str, selector: dict[str, str],
+                                start_x: int, start_y: int, end_x: int, end_y: int,
+                                max_swipes: int = 5, duration_ms: int = 400,
+                                settle_ms: int = 250) -> dict:
+        """Find an exact element using bounded swipes and fresh local observations.
+
+        Supply swipe coordinates from the current screen. Returns only presence
+        and counts; tap_element must observe again before acting on the result.
+        """
+        selector = _selector(selector)
+        coordinates = (start_x, start_y, end_x, end_y)
+        if any(type(value) is not int or value < 0 for value in coordinates):
+            raise ValueError('Swipe coordinates must be nonnegative integer pixels')
+        if (start_x, start_y) == (end_x, end_y):
+            raise ValueError('Swipe endpoints must differ')
+        for value, lower, upper, name in (
+                (max_swipes, 0, 10, 'max_swipes'),
+                (duration_ms, 50, 2000, 'duration_ms'),
+                (settle_ms, 0, 2000, 'settle_ms')):
+            if type(value) is not int or not lower <= value <= upper:
+                raise ValueError(f'{name} must be {lower}..{upper}')
+        for swipes in range(max_swipes + 1):
+            found = _match(await self.server.elements(device_serial), selector) is not None
+            if found or swipes == max_swipes:
+                return {'status': 'found' if found else 'not_found', 'matched': found,
+                        'swipes': swipes, 'observations': swipes + 1}
+            await self.server.swipe(device_serial, start_x, start_y, end_x, end_y,
+                                    duration_ms=duration_ms)
+            await asyncio.sleep(settle_ms / 1000)
+
     async def tap_element_and_wait(self, device_serial: str, selector: dict[str, str],
                                    expected_selector: dict[str, str],
                                    expected_state: str = 'present',

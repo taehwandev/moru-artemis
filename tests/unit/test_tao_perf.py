@@ -60,6 +60,29 @@ class PerformanceTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, 'frame summary'):
             _parse_gfxinfo('---PROFILEDATA---\nno data\n---PROFILEDATA---')
 
+    def test_partial_percentiles_preserve_device_values(self):
+        output = GFXINFO.replace('95th percentile: 18ms\n', '')
+        self.assertEqual({'p50': 8, 'p90': 17, 'p95': None, 'p99': 19},
+                         _parse_gfxinfo(output, include_stages=False)['frame_time_ms'])
+        self.assertEqual({'p50': 8, 'p90': 17, 'p95': 19.0, 'p99': 19},
+                         _parse_gfxinfo(output)['frame_time_ms'])
+
+    async def test_cleanup_failure_preserves_recording_error(self):
+        self.device.shell.side_effect = ['ERROR: INVALID_LAYER_STACK', OSError('offline')]
+        with self.assertRaisesRegex(RuntimeError, 'current display state') as caught:
+            await self.tools.record_frames('device-b', 1, 1)
+        self.assertIn('Temporary device recording cleanup also failed',
+                      caught.exception.__notes__)
+
+    async def test_cleanup_failure_after_success_is_reported(self):
+        self.device.shell.side_effect = ['', OSError('offline')]
+        self.device.sync.pull.side_effect = lambda remote, local: Path(local).write_bytes(b'video')
+        def fake_ffmpeg(args, **kwargs):
+            PILImage.new('RGB', (100, 100)).save(args[-1].replace('%03d', '001'))
+        with patch('tao_perf.subprocess.run', side_effect=fake_ffmpeg):
+            with self.assertRaisesRegex(RuntimeError, 'Temporary device recording cleanup failed'):
+                await self.tools.record_frames('device-b', 1, 1)
+
     async def test_read_returns_only_small_summary(self):
         result = await self.tools.perf_frame_stats('device-b', 'example.app')
         self.server._adb.AdbClient.assert_called_once()

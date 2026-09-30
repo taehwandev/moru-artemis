@@ -61,6 +61,7 @@ Do not register the upstream autonomous `mcp_server.server` for this mode.
 | `tap_element_and_wait` | Tap one exact UI match, then check a bounded UI condition |
 | `input_element` | Focus and type into one exact UI match |
 | `wait_for_element` | Poll locally for a bounded UI condition and return a compact result |
+| `scroll_to_element` | Search locally with bounded swipes and return only presence and counts |
 | `perf_frame_stats` | Reset or summarize one app's Android frame timing counters |
 | `record_frames` | Return a short screen recording as a bounded PNG frame sheet |
 | `capture_baseline` | Capture one same-device static reference in memory and return its image |
@@ -276,7 +277,9 @@ framestats frame count and p50/p90/p99 milliseconds for input→traversal,
 measure/layout, draw recording, render thread and swap. Missing device counters
 are null rather than fabricated zeros. The raw `dumpsys gfxinfo` output is never
 returned to the host. These are app-rendering counters, not a full display or
-GPU trace; reset/read must target the same device and package.
+GPU trace; reset/read must target the same device and package. Available device
+percentiles are preserved; missing percentiles use valid framestats samples
+when available and otherwise remain null.
 
 `record_frames` accepts `seconds` (1–10), `fps` (1–4), and optional pixel
 `crop: [left, top, right, bottom]`; `seconds * fps` must be at most 16. It
@@ -284,7 +287,9 @@ returns one native MCP PNG image of at most 16 labeled frames on a canvas no
 larger than 1024×1024 pixels. Recording runs while the tool call is active;
 trigger the UI action concurrently from another tool call to capture its
 transition. The tool removes its temporary host file and attempts to remove the
-device file even on failure. The target display must be active; a device that
+device file even on failure. Cleanup failure preserves an existing recording
+error with an additional diagnostic; after a successful recording it is reported
+as an error instead of claiming cleanup succeeded. The target display must be active; a device that
 reports `INVALID_LAYER_STACK` returns a display-state error. Android
 screenrecord has no audio and does not handle rotation during capture reliably.
 The image size bounds visual input, but the host model determines its actual
@@ -299,7 +304,33 @@ failed condition, never a passing test. Device failures and ambiguous matches
 are errors, not proof of absence. Timeouts use cooperative async cancellation;
 a blocking upstream device call can delay return. This is not a motion recorder.
 
-Reconnect the host MCP client after updating to discover all 16 tools. Verify
+### Reduce host observation traffic
+
+For a known accessible target, call `scroll_to_element` with an exact selector
+and swipe endpoints verified on the current screen. It observes before moving,
+then rereads the hierarchy after each swipe; intermediate hierarchies and images
+stay local. The response contains only `status`, `matched`, `swipes`, and
+`observations`. `max_swipes` is 0–10 (default 5), `duration_ms` is 50–2000
+(default 400), and `settle_ms` is 0–2000 (default 250). Duplicate matches,
+observation errors and swipe failures stop immediately. A missing target returns
+`matched: false`; finding it establishes presence, not enabled state or a
+successful interaction. Use `tap_element` next so tapping reads the current
+position again. Cancellation stops subsequent swipes, though an upstream action
+already in progress may finish.
+
+```json
+{"device_serial":"SELECTED_SERIAL","selector":{"text":"Display","package":"com.android.settings"},"start_x":500,"start_y":1500,"end_x":500,"end_y":500,"max_swipes":3}
+```
+
+Prefer element actions and local waits/search over repeated screenshot reasoning.
+For unfamiliar screens, start with `hierarchy` filtered by package and labels;
+request a screenshot only when visual evidence is needed. Keep device counters
+and other machine-readable evidence in structured summaries. Coordinates and
+screen classifications must come from observations; an action or transport
+success never proves the requested state occurred. Actual model-token savings
+depend on the host and scenario and are not measured by contract tests.
+
+Reconnect the host MCP client after updating to discover all 17 tools. Verify
 new selection/wait contracts with:
 
 ```sh

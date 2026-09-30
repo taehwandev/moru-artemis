@@ -18,7 +18,7 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
         # that is the seam these contracts stub rather than a controller call.
         self.observe = AsyncMock(return_value=[self.element])
         self.server = SimpleNamespace(elements=self.observe,
-                                      tap=AsyncMock(), _type_into=AsyncMock())
+                                      tap=AsyncMock(), swipe=AsyncMock(), _type_into=AsyncMock())
         self.tools = ElementTools(self.server)
 
     async def test_exact_target_uses_bounds_and_explicit_device(self):
@@ -26,6 +26,67 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
         self.observe.assert_awaited_once_with('device-b')
         self.server.tap.assert_awaited_once_with('device-b', 60, 40)
         self.assertEqual('action_sent', result['status'])
+
+    async def test_scroll_finds_target_using_fresh_post_swipe_observation(self):
+        self.observe.side_effect = [[], [], [self.element]]
+        result = await self.tools.scroll_to_element(
+            'device-b', {'text': 'Search'}, 100, 500, 100, 100, settle_ms=0)
+        self.assertEqual({'status': 'found', 'matched': True,
+                          'swipes': 2, 'observations': 3}, result)
+        self.assertEqual(2, self.server.swipe.await_count)
+        self.server.swipe.assert_awaited_with('device-b', 100, 500, 100, 100, duration_ms=400)
+        self.assertTrue(all(call.args == ('device-b',)
+                            for call in self.observe.await_args_list))
+        self.server.tap.assert_not_awaited()
+        self.assertLess(len(str(result).encode('utf-8')), 128)
+
+    async def test_scroll_never_moves_when_target_is_already_present(self):
+        result = await self.tools.scroll_to_element(
+            'device-b', {'text': 'Search'}, 100, 500, 100, 100)
+        self.assertTrue(result['matched'])
+        self.assertEqual(0, result['swipes'])
+        self.server.swipe.assert_not_awaited()
+
+    async def test_scroll_respects_limit_and_reports_missing_target(self):
+        self.observe.return_value = []
+        for limit in (0, 2):
+            self.observe.reset_mock()
+            self.server.swipe.reset_mock()
+            result = await self.tools.scroll_to_element(
+                'device-b', {'text': 'Search'}, 100, 500, 100, 100,
+                max_swipes=limit, settle_ms=0)
+            self.assertFalse(result['matched'])
+            self.assertEqual('not_found', result['status'])
+            self.assertEqual(limit, self.server.swipe.await_count)
+            self.assertEqual(limit + 1, self.observe.await_count)
+
+    async def test_scroll_refuses_ambiguous_target_and_propagates_device_errors(self):
+        self.observe.return_value = [self.element, self.element]
+        with self.assertRaisesRegex(ValueError, 'Ambiguous'):
+            await self.tools.scroll_to_element('device-b', {'text': 'Search'}, 1, 5, 1, 1)
+        self.server.swipe.assert_not_awaited()
+        self.observe.side_effect = RuntimeError('device offline')
+        with self.assertRaisesRegex(RuntimeError, 'device offline'):
+            await self.tools.scroll_to_element('device-b', {'text': 'Search'}, 1, 5, 1, 1)
+        self.observe.side_effect = None
+        self.observe.return_value = []
+        self.server.swipe.side_effect = RuntimeError('swipe failed')
+        with self.assertRaisesRegex(RuntimeError, 'swipe failed'):
+            await self.tools.scroll_to_element('device-b', {'text': 'Search'}, 1, 5, 1, 1)
+
+    async def test_scroll_validates_all_limits_before_device_access(self):
+        for options in ({'max_swipes': -1}, {'max_swipes': 11}, {'max_swipes': True},
+                        {'duration_ms': 0}, {'settle_ms': 2001}):
+            with self.assertRaises(ValueError):
+                await self.tools.scroll_to_element(
+                    'device-b', {'text': 'Search'}, 1, 5, 1, 1, **options)
+        for coordinates in ((-1, 5, 1, 1), (1, 1, 1, 1), (True, 5, 1, 1)):
+            with self.assertRaises(ValueError):
+                await self.tools.scroll_to_element('device-b', {'text': 'Search'}, *coordinates)
+        with self.assertRaises(ValueError):
+            await self.tools.scroll_to_element('device-b', {}, 1, 5, 1, 1)
+        self.observe.assert_not_awaited()
+        self.server.swipe.assert_not_awaited()
 
     async def test_duplicates_refuse_without_action(self):
         self.observe.return_value = [self.element, dict(self.element)]

@@ -64,7 +64,7 @@ def _register_tools(server):
         server.mcp.add_tool(tool, annotations=read_only)
     for tool in (server.tap, server.swipe, server.input_text, server.press_key,
                  server.launch_app, elements.tap_element, elements.tap_element_and_wait,
-                 elements.input_element, performance.perf_frame_stats,
+                 elements.input_element, elements.scroll_to_element, performance.perf_frame_stats,
                  performance.record_frames):
         server.mcp.add_tool(tool)
 
