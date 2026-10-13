@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, Mock, patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from tao_elements import element_view  # noqa: E402
+from moru_elements import element_view  # noqa: E402
 
 NODE_DEFAULTS = {
     'index': '0', 'text': '', 'resource-id': '', 'class': 'android.widget.TextView',
@@ -38,7 +38,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         cls.state = tempfile.TemporaryDirectory()
         cls.env = patch.dict(os.environ, {'ARTEMIS_APP_DIR': cls.state.name})
         cls.env.start()
-        from tao_mcp import DirectDeviceServer
+        from moru_mcp import DirectDeviceServer
         cls.server = DirectDeviceServer()
 
     @classmethod
@@ -84,7 +84,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.mock_get.assert_not_called()
 
     def test_perf_device_resolves_explicit_serial_without_ui_controller(self):
-        from tao_adb import selected_adb_device
+        from moru_adb import selected_adb_device
         selected = SimpleNamespace(serial='device-b')
         with patch.object(self.server._adb, 'AdbClient') as client:
             client.return_value.device_list.return_value = [
@@ -201,7 +201,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.mock_get.assert_not_called()
 
     def test_hierarchy_backend_is_pinned_but_never_overrides_an_explicit_choice(self):
-        from tao_mcp import DirectDeviceServer
+        from moru_mcp import DirectDeviceServer
         self.assertEqual('uiautomator', os.environ['ARTEMIS_HIERARCHY_BACKEND'])
         with patch.dict(os.environ, {'ARTEMIS_HIERARCHY_BACKEND': 'helper',
                                      'ARTEMIS_APP_DIR': self.state.name}):
@@ -214,14 +214,14 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.mock_get.assert_not_called()
 
     async def test_factory_contract_drift_fails_before_device_access(self):
-        from tao_mcp import _check_controller_factory
+        from moru_mcp import _check_controller_factory
         for factory in (None, lambda: None, lambda serial: None, AsyncMock()):
             with self.subTest(factory=type(factory).__name__):
                 with self.assertRaisesRegex(RuntimeError, 'Incompatible Artemis'):
                     _check_controller_factory(SimpleNamespace(_get_controller=factory))
 
     async def test_factory_contract_check_never_opens_device(self):
-        from tao_mcp import _check_controller_factory
+        from moru_mcp import _check_controller_factory
         def factory(device_serial=None):
             raise AssertionError('device access during startup')
         _check_controller_factory(SimpleNamespace(_get_controller=factory))
@@ -232,7 +232,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.dump.return_value = node_xml(**{'class': 'android.widget.EditText',
                                              'focusable': 'true'})
         self.controller.type_text = AsyncMock(return_value=True)
-        with patch('tao_mcp.asyncio.sleep', AsyncMock()) as settle:
+        with patch('moru_mcp.asyncio.sleep', AsyncMock()) as settle:
             self.assertEqual('Success',
                              await self.server.input_text('device-b', 50, 50, 'hello', True))
         self.dump.assert_called_once_with()
@@ -259,7 +259,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_typing_does_not_report_success(self):
         self.controller.type_text = AsyncMock(return_value=False)
-        with patch('tao_mcp.asyncio.sleep', AsyncMock()):
+        with patch('moru_mcp.asyncio.sleep', AsyncMock()):
             with self.assertRaisesRegex(RuntimeError, 'Text input failed'):
                 await self.server.input_text('device-b', 12, 34, 'hello')
 
@@ -271,7 +271,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
                    ('ANTHROPIC_', 'OPENAI_', 'GOOGLE_', 'GEMINI_'))}
         env['ARTEMIS_APP_DIR'] = self.state.name
         params = StdioServerParameters(command=sys.executable,
-                                       args=['-B', str(ROOT / 'tao_mcp.py')], env=env)
+                                       args=['-B', str(ROOT / 'moru_mcp.py')], env=env)
         async with asyncio.timeout(60):
             with tempfile.TemporaryFile(mode='w+') as errors:
                 async with stdio_client(params, errlog=errors) as (read, write):

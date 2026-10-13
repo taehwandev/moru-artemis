@@ -6,7 +6,7 @@ from io import BytesIO
 
 from mcp.types import CallToolResult, ImageContent, TextContent
 
-from tao_elements import element_view
+from moru_elements import element_view
 
 
 _PIXEL_DELTA_THRESHOLD = 16

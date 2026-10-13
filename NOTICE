@@ -9,7 +9,7 @@ the Apache License, Version 2.0; see LICENSE.
 Artemis in turn derives parts of its device layer from Mobile-Use by Minitap,
 Inc. The upstream NOTICE for that work is reproduced below, as Apache License
 2.0 section 4(d) requires a derivative work to carry it. Minitap's attribution
-request is honoured in README.md and TAO-MCP.md.
+request is honoured in README.md and MORU-MCP.md.
 
 -------------------------------------------------------------------------------
 Upstream NOTICE, from https://github.com/minitap-ai/mobile-use/blob/main/NOTICE

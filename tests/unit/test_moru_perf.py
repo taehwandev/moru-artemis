@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 from PIL import Image as PILImage
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tao_perf import PerformanceTools, _parse_gfxinfo  # noqa: E402
+from moru_perf import PerformanceTools, _parse_gfxinfo  # noqa: E402
 
 
 GFXINFO = """Graphics info for pid 1234 [example.app]
@@ -79,7 +79,7 @@ class PerformanceTest(unittest.IsolatedAsyncioTestCase):
         self.device.sync.pull.side_effect = lambda remote, local: Path(local).write_bytes(b'video')
         def fake_ffmpeg(args, **kwargs):
             PILImage.new('RGB', (100, 100)).save(args[-1].replace('%03d', '001'))
-        with patch('tao_perf.subprocess.run', side_effect=fake_ffmpeg):
+        with patch('moru_perf.subprocess.run', side_effect=fake_ffmpeg):
             with self.assertRaisesRegex(RuntimeError, 'Temporary device recording cleanup failed'):
                 await self.tools.record_frames('device-b', 1, 1)
 
@@ -124,7 +124,7 @@ class PerformanceTest(unittest.IsolatedAsyncioTestCase):
                     args[-1].replace('%03d', f'{number:03d}'))
 
         self.device.sync.pull.side_effect = fake_pull
-        with patch('tao_perf.subprocess.run', side_effect=fake_ffmpeg) as ffmpeg:
+        with patch('moru_perf.subprocess.run', side_effect=fake_ffmpeg) as ffmpeg:
             result = await self.tools.record_frames('device-b', 2, 2, [0, 0, 400, 800])
         image = result.to_image_content()
         self.assertEqual('image/png', image.mimeType)

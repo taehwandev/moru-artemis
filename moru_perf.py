@@ -13,7 +13,7 @@ from uuid import uuid4
 import imageio_ffmpeg
 from mcp.server.fastmcp import Image
 from PIL import Image as PILImage, ImageDraw
-from tao_adb import selected_adb_device
+from moru_adb import selected_adb_device
 
 
 _PACKAGE = re.compile(r'[A-Za-z_][A-Za-z0-9_.]{0,199}')

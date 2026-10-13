@@ -9,10 +9,10 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
 from mcp.types import ToolAnnotations
-from tao_adb import adb_client
-from tao_comparison import ComparisonTools
-from tao_elements import ElementTools, element_view, is_focused
-from tao_perf import PerformanceTools
+from moru_adb import adb_client
+from moru_comparison import ComparisonTools
+from moru_elements import ElementTools, element_view, is_focused
+from moru_perf import PerformanceTools
 
 # Upstream's focus helper waits this long for the keyboard after tapping a field.
 _KEYBOARD_SETTLE_SECONDS = 1.0
@@ -137,7 +137,7 @@ class DirectDeviceServer:
         # Set these before Artemis loads its process-wide settings.
         os.environ['ARTEMIS_CLOUD_MODE'] = '0'
         os.environ['ARTEMIS_KEEP_DEVICE_AWAKE'] = 'false'
-        os.environ.setdefault('ARTEMIS_APP_DIR', str(Path.home() / '.tao' / 'artemis'))
+        os.environ.setdefault('ARTEMIS_APP_DIR', str(Path.home() / '.moru' / 'artemis'))
         # This adapter observes the helper but never provisions it, so under
         # 'auto' every 30s helper retry stops and restarts the UIAutomator2
         # server on a device that has no helper. setdefault leaves an explicit

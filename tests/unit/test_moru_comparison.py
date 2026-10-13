@@ -12,7 +12,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tao_comparison import ComparisonTools
+from moru_comparison import ComparisonTools
 
 
 def encoded_image(color, size=(4, 4)):

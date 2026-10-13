@@ -8,7 +8,7 @@ Artemis derives parts of its device layer from
 [Mobile-Use](https://github.com/minitap-ai/mobile-use) by Minitap, Inc., whose
 NOTICE this fork carries in [NOTICE](NOTICE); the element parser this adapter
 reads the hierarchy through is theirs. Minitap is not affiliated with this fork.
-`tao_mcp.py` adds a small stdio MCP adapter for existing Codex or Claude sessions.
+`moru_mcp.py` adds a small stdio MCP adapter for existing Codex or Claude sessions.
 The host reasons about screenshots/UI elements; Artemis executes explicit device
 operations. No Gemini, OpenAI or Anthropic API key is required for this adapter.
 The host's normal authentication, subscription, usage charges, and data policies
@@ -35,14 +35,14 @@ Upstream [Quick Start](README.md#quick-start) uses `./start.sh` on macOS/Linux
 or `.\start.bat` on Windows. Those scripts also prepare system tools, launch the
 web UI, and offer to register the upstream autonomous MCP and global rules.
 For this host-driven adapter, use the shared `uv sync` environment step above
-and register `tao_mcp.py` below; running the web UI bootstrap is optional and
+and register `moru_mcp.py` below; running the web UI bootstrap is optional and
 does not configure this adapter. Keep the original upstream startup scripts
 unchanged. Use `uv sync --frozen` when reproducing an already-reviewed lockfile.
 
 Configure an MCP server named `moru-artemis` in each host with:
 
 - command: the absolute path to this checkout's `.venv/bin/python`
-- args: `-B` and the absolute path to this checkout's `tao_mcp.py`
+- args: `-B` and the absolute path to this checkout's `moru_mcp.py`
 - optional env: `ARTEMIS_APP_DIR` for private local runtime state
 
 On Windows, use `.venv/Scripts/python.exe`. The lockfile installs the upstream
@@ -94,7 +94,7 @@ delta against explicit acceptance criteria. A current-state invariant can be
 verified without an older build, but must not be reported as a before/after claim.
 
 Registration alone does not route tests through MCP. The host workflow must
-select and call the tools. Tao's `device-testing` guidance supports preparation
+select and call the tools. Moru Core's `device-testing` guidance supports preparation
 when the operator has configured the local device MCP registry. Keep unit tests
 in the project's normal test runner.
 
@@ -176,7 +176,7 @@ installed through upstream's own provisioning path.
 Run the adapter tests and existing lazy-export regression tests:
 
 ```sh
-.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_mcp.py'
+.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_moru_mcp.py'
 .venv/bin/python -B -m unittest discover -s tests/unit -p 'test_lazy_public_exports.py'
 ```
 
@@ -334,9 +334,9 @@ Reconnect the host MCP client after updating to discover all 17 tools. Verify
 new selection/wait contracts with:
 
 ```sh
-.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_elements.py'
-.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_comparison.py'
-.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_tao_perf.py'
+.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_moru_elements.py'
+.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_moru_comparison.py'
+.venv/bin/python -B -m unittest discover -s tests/unit -p 'test_moru_perf.py'
 ```
 
 One element action replaces the usual host hierarchy-read/coordinate-calculation/

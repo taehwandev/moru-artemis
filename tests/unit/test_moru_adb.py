@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import Mock, patch
 
-from tao_adb import adb_client
+from moru_adb import adb_client
 
 
 class AdbEndpointTest(unittest.TestCase):
