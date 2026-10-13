@@ -28,7 +28,7 @@ def _check_controller_factory(adb_server):
     except (TypeError, ValueError) as exc:
         raise RuntimeError(
             'Incompatible Artemis controller factory; restore the tested upstream '
-            'revision or update the tao-artemis adapter before device testing.'
+            'revision or update the moru-artemis adapter before device testing.'
         ) from exc
 
 
@@ -48,7 +48,7 @@ def _check_hierarchy_helpers(parse, prune):
     except (TypeError, ValueError) as exc:
         raise RuntimeError(
             'Incompatible Artemis hierarchy helpers; restore the tested upstream '
-            'revision or update the tao-artemis adapter before device testing.'
+            'revision or update the moru-artemis adapter before device testing.'
         ) from exc
 
 
@@ -155,7 +155,7 @@ class DirectDeviceServer:
         self._parse_hierarchy = parse_hierarchy_xml_to_elements
         self._prune_hierarchy = filter_ui_hierarchy
         self._adb = adb_server
-        self.mcp = FastMCP('tao-artemis')
+        self.mcp = FastMCP('moru-artemis')
         _register_tools(self)
 
     def _device(self, device_serial: str):

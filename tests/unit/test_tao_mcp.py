@@ -277,7 +277,7 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
                 async with stdio_client(params, errlog=errors) as (read, write):
                     async with ClientSession(read, write) as session:
                         initialized = await session.initialize()
-                        self.assertEqual('tao-artemis', initialized.serverInfo.name)
+                        self.assertEqual('moru-artemis', initialized.serverInfo.name)
                         tools = await session.list_tools()
                         self.assertEqual(17, len(tools.tools))
                         missing = await session.call_tool('tap', {'x': 1, 'y': 2})

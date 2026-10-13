@@ -1,4 +1,4 @@
-# tao-artemis local development
+# moru-artemis local development
 
 Read `TAO-MCP.md` for the host-driven MCP contract. Preserve upstream Apache-2.0
 licensing and copyright notices. Keep upstream SDK compatibility and keep the

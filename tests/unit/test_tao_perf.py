@@ -133,7 +133,7 @@ class PerformanceTest(unittest.IsolatedAsyncioTestCase):
             self.assertLessEqual(sheet.height, 1024)
         self.assertEqual(1, ffmpeg.call_count)
         self.assertEqual(2, self.device.shell.call_count)
-        self.assertTrue(self.device.shell.call_args.args[0].startswith('rm -f /sdcard/tao-artemis-'))
+        self.assertTrue(self.device.shell.call_args.args[0].startswith('rm -f /sdcard/moru-artemis-'))
 
     async def test_invalid_recording_limits_never_reach_device(self):
         for settings in ((0, 1, None), (10, 4, None), (1, 5, None),
@@ -147,7 +147,7 @@ class PerformanceTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, 'current display state'):
             await self.tools.record_frames('device-b', 1, 1)
         self.device.sync.pull.assert_not_called()
-        self.assertTrue(self.device.shell.call_args.args[0].startswith('rm -f /sdcard/tao-artemis-'))
+        self.assertTrue(self.device.shell.call_args.args[0].startswith('rm -f /sdcard/moru-artemis-'))
 
 
 if __name__ == '__main__':

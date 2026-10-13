@@ -1,4 +1,4 @@
-# tao-artemis: host-driven Android MCP
+# moru-artemis: host-driven Android MCP
 
 This is an independent fork of [Google's Artemis](https://github.com/google/artemis),
 not maintained, endorsed, or sponsored by Google. It retains the original
@@ -26,8 +26,8 @@ ADB and an authorized Android device or running emulator are needed for device
 operations. Install the app under test through your normal build/install process:
 
 ```sh
-git clone https://github.com/taehwandev/tao-artemis.git
-cd tao-artemis
+git clone https://github.com/taehwandev/moru-artemis.git
+cd moru-artemis
 uv sync
 ```
 
@@ -39,7 +39,7 @@ and register `tao_mcp.py` below; running the web UI bootstrap is optional and
 does not configure this adapter. Keep the original upstream startup scripts
 unchanged. Use `uv sync --frozen` when reproducing an already-reviewed lockfile.
 
-Configure an MCP server named `tao-artemis` in each host with:
+Configure an MCP server named `moru-artemis` in each host with:
 
 - command: the absolute path to this checkout's `.venv/bin/python`
 - args: `-B` and the absolute path to this checkout's `tao_mcp.py`

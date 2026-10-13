@@ -99,7 +99,7 @@ def _parse_gfxinfo(output, include_stages=True):
 
 
 def _record_sheet(device, seconds, fps, crop):
-    remote = f'/sdcard/tao-artemis-{uuid4().hex}.mp4'
+    remote = f'/sdcard/moru-artemis-{uuid4().hex}.mp4'
     try:
         with tempfile.TemporaryDirectory(prefix='tao-frames-') as directory:
             local = Path(directory) / 'recording.mp4'
