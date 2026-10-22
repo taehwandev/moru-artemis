@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from moru_elements import ElementTools
@@ -217,6 +217,47 @@ class ElementToolsTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await self.tools.wait_for_element('device-b', {'text': 'Search'}, **kwargs)
         self.observe.assert_not_awaited()
+
+    async def test_scroll_stops_early_when_nonempty_hierarchy_is_stagnant(self):
+        other = {'text': 'Header', 'bounds': '[0,0][1080,100]', 'enabled': 'true'}
+        self.observe.side_effect = [[other], [other], [self.element]]
+        with patch('moru_elements.asyncio.sleep', AsyncMock()):
+            result = await self.tools.scroll_to_element(
+                'device-b', {'text': 'Search'}, 500, 1600, 500, 400, max_swipes=5
+            )
+        self.assertEqual(
+            {
+                'status': 'not_found',
+                'matched': False,
+                'swipes': 1,
+                'observations': 2,
+                'scroll_end_reached': True,
+            },
+            result,
+        )
+        self.server.swipe.assert_awaited_once_with(
+            'device-b', 500, 1600, 500, 400, duration_ms=400
+        )
+
+        self.observe.side_effect = [[other], [other], [self.element]]
+        self.server.swipe.reset_mock()
+        unsettled = await self.tools.scroll_to_element(
+            'device-b', {'text': 'Search'}, 500, 1600, 500, 400, max_swipes=5, settle_ms=0
+        )
+        self.assertTrue(unsettled['matched'])
+        self.assertEqual(2, unsettled['swipes'])
+
+    async def test_wait_for_stable_requires_two_matching_bounds_observations(self):
+        moving = {**self.element, 'bounds': '[10,40][110,80]'}
+        settled = {**self.element, 'bounds': '[10,20][110,60]'}
+        self.observe.side_effect = [[moving], [settled], [], [settled], [settled]]
+        with patch('moru_elements.asyncio.sleep', AsyncMock()):
+            result = await self.tools.wait_for_element(
+                'device-b', {'text': 'Search'}, state='stable', timeout_ms=1000, poll_interval_ms=100
+            )
+        self.assertTrue(result['matched'])
+        self.assertEqual(5, result['observations'])
+        self.assertEqual('[10,20][110,60]', result['element']['bounds'])
 
     async def test_slow_async_observation_respects_deadline(self):
         async def slow(_device_serial):

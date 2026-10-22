@@ -257,6 +257,57 @@ class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
         self.controller.tap_at.assert_not_awaited()
         self.controller.type_text.assert_not_awaited()
 
+    async def test_elements_updates_screen_size_from_root_parsed_bounds(self):
+        status_bar = 'index="0" text="12:00" class="android.widget.TextView" package="com.android.systemui" bounds="[0,0][1080,84]"'
+        window = 'index="1" text="Hello" class="android.widget.TextView" package="pkg" bounds="[0,0][2404,1080]"'
+        self.dump.return_value = (
+            "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>"
+            f'<hierarchy rotation="1"><node {status_bar} /><node {window} /></hierarchy>'
+        )
+        await self.server.elements('device-b')
+        self.assertEqual(2404, self.controller.ctx.device.device_width)
+        self.assertEqual(1080, self.controller.ctx.device.device_height)
+
+        self.dump.return_value = node_xml(bounds='[0,0][1080,84]')
+        await self.server.elements('device-b')
+        self.assertEqual(2404, self.controller.ctx.device.device_width)
+        self.assertEqual(1080, self.controller.ctx.device.device_height)
+
+    async def test_elements_uses_connected_u2_device_directly_and_recovers_on_error(self):
+        raw_device = SimpleNamespace(
+            dump_hierarchy=Mock(return_value=node_xml(text='FastPath'))
+        )
+        self.controller.ctx.ui_adb_client._device = raw_device
+        elements = await self.server.elements('device-b')
+        raw_device.dump_hierarchy.assert_called_once_with(compressed=True)
+        self.dump.assert_not_called()
+        self.assertEqual('FastPath', elements[0]['text'])
+
+        raw_device.dump_hierarchy.side_effect = RuntimeError('rpc lost')
+        self.dump.return_value = node_xml(text='Recovered')
+        recovered = await self.server.elements('device-b')
+        self.assertIsNone(self.controller.ctx.ui_adb_client._device)
+        self.dump.assert_called_once_with()
+        self.assertEqual('Recovered', recovered[0]['text'])
+
+    async def test_screenshot_uses_connected_u2_device_directly_and_recovers_on_error(self):
+        from PIL import Image as PilImage
+
+        raw_device = SimpleNamespace(
+            screenshot=Mock(return_value=PilImage.new('RGBA', (4, 4), (255, 0, 0, 255)))
+        )
+        self.controller.ctx.ui_adb_client._device = raw_device
+        image = await self.server.screenshot('device-b')
+        raw_device.screenshot.assert_called_once_with()
+        self.shot.assert_not_called()
+        self.assertTrue(image.data.startswith(b'\xff\xd8'))
+
+        raw_device.screenshot.side_effect = RuntimeError('rpc lost')
+        fallback = await self.server.screenshot('device-b')
+        self.assertIsNone(self.controller.ctx.ui_adb_client._device)
+        self.shot.assert_called_once_with()
+        self.assertEqual(b'image', fallback.data)
+
     async def test_failed_typing_does_not_report_success(self):
         self.controller.type_text = AsyncMock(return_value=False)
         with patch('moru_mcp.asyncio.sleep', AsyncMock()):

@@ -91,10 +91,35 @@ class ComparisonToolsTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual('comparison_observed', summary['status'])
         self.assertEqual(1.0, summary['pixel_delta']['changed_pixel_ratio'])
+        self.assertEqual([0, 0, 4, 4], summary['pixel_delta']['changed_bounds'])
         self.assertEqual(1, summary['semantic_delta']['added_count'])
         self.assertEqual(1, summary['semantic_delta']['removed_count'])
+        self.assertEqual(0, summary['semantic_delta']['moved_count'])
         self.assertIn('host_must_compare', summary['verdict'])
         self.assertEqual('image', result.content[1].type)
+
+    async def test_compare_reports_moved_elements_and_null_bounds_when_identical_pixels(self):
+        self.screenshot.side_effect = [screen_image('black'), screen_image('black')]
+        self.elements.side_effect = [
+            [{'text': 'Save', 'resource-id': 'app:id/save', 'bounds': '[0,10][100,50]', 'enabled': 'true'}],
+            [{'text': 'Save', 'resource-id': 'app:id/save', 'bounds': '[0,30][100,70]', 'enabled': 'true'}],
+        ]
+        await self.tools.capture_baseline('device-a')
+        result = await self.tools.compare_current('device-a')
+        summary = result.structuredContent
+        self.assertIsNone(summary['pixel_delta']['changed_bounds'])
+        self.assertEqual(1, summary['semantic_delta']['moved_count'])
+        self.assertEqual('[0,10][100,50]', summary['semantic_delta']['moved'][0]['previous_bounds'])
+        self.assertEqual('[0,30][100,70]', summary['semantic_delta']['moved'][0]['current_bounds'])
+
+        row_a = {'text': 'Row', 'resource-id': 'app:id/row', 'bounds': '[0,10][100,50]', 'enabled': 'true'}
+        row_b = {'text': 'Row', 'resource-id': 'app:id/row', 'bounds': '[0,60][100,100]', 'enabled': 'true'}
+        row_c = {'text': 'Row', 'resource-id': 'app:id/row', 'bounds': '[0,110][100,150]', 'enabled': 'true'}
+        self.screenshot.side_effect = [screen_image('black'), screen_image('black')]
+        self.elements.side_effect = [[row_a, row_b], [row_b, row_c]]
+        await self.tools.capture_baseline('device-a')
+        ambiguous = (await self.tools.compare_current('device-a')).structuredContent
+        self.assertEqual(0, ambiguous['semantic_delta']['moved_count'])
 
     async def test_compare_rejects_changed_display_dimensions(self):
         self.screenshot.side_effect = [screen_image('black', (4, 4)),

@@ -94,11 +94,41 @@ def _pixel_delta(before, current):
         second_pixels = np.asarray(second.convert('RGB'), dtype=np.int16)
     delta = np.abs(first_pixels - second_pixels)
     changed = np.any(delta >= _PIXEL_DELTA_THRESHOLD, axis=2)
+    if np.any(changed):
+        rows = np.where(np.any(changed, axis=1))[0]
+        cols = np.where(np.any(changed, axis=0))[0]
+        changed_bounds = [int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1]
+    else:
+        changed_bounds = None
     return {
         'changed_pixel_ratio': round(float(changed.mean()), 6),
         'mean_absolute_channel_delta': round(float(delta.mean()), 3),
         'threshold': _PIXEL_DELTA_THRESHOLD,
+        'changed_bounds': changed_bounds,
     }
+
+
+def _identity_without_bounds(element):
+    return (
+        str(element.get('resource-id') or ''),
+        str(element.get('text') or ''),
+        str(element.get('content-desc') or ''),
+        str(element.get('class') or ''),
+        str(element.get('package') or ''),
+    )
+
+
+def _without_bounds(element):
+    return {key: value for key, value in element.items() if key != 'bounds'}
+
+
+def _identity_counts(elements):
+    counts = {}
+    for item in elements:
+        ident = _identity_without_bounds(item)
+        if any(ident[:3]):
+            counts[ident] = counts.get(ident, 0) + 1
+    return counts
 
 
 def _semantic_delta(before, current):
@@ -112,16 +142,51 @@ def _semantic_delta(before, current):
     latest = indexed(current)
     added_keys = sorted(latest.keys() - previous.keys())
     removed_keys = sorted(previous.keys() - latest.keys())
+    added_items = [latest[key] for key in added_keys]
+    removed_items = [previous[key] for key in removed_keys]
+
+    before_counts = _identity_counts(before)
+    current_counts = _identity_counts(current)
+    removed_by_id = {}
+    for item in removed_items:
+        ident = _identity_without_bounds(item)
+        if before_counts.get(ident) == 1:
+            removed_by_id.setdefault(ident, []).append(item)
+    added_by_id = {}
+    for item in added_items:
+        ident = _identity_without_bounds(item)
+        if current_counts.get(ident) == 1:
+            added_by_id.setdefault(ident, []).append(item)
+
+    moved = []
+    for ident in sorted(set(removed_by_id) & set(added_by_id)):
+        rem_group = removed_by_id[ident]
+        add_group = added_by_id[ident]
+        if len(rem_group) == 1 and len(add_group) == 1:
+            prev_item, curr_item = rem_group[0], add_group[0]
+            prev_bounds = prev_item.get('bounds')
+            curr_bounds = curr_item.get('bounds')
+            if (prev_bounds and curr_bounds and prev_bounds != curr_bounds
+                    and _without_bounds(prev_item) == _without_bounds(curr_item)):
+                moved.append({
+                    'element': curr_item,
+                    'previous_bounds': prev_bounds,
+                    'current_bounds': curr_bounds,
+                })
+
     return {
         'baseline_element_count': len(before),
         'current_element_count': len(current),
         'added_count': len(added_keys),
         'removed_count': len(removed_keys),
-        'added': [latest[key] for key in added_keys[:_SEMANTIC_SAMPLE_LIMIT]],
-        'removed': [previous[key] for key in removed_keys[:_SEMANTIC_SAMPLE_LIMIT]],
+        'moved_count': len(moved),
+        'added': added_items[:_SEMANTIC_SAMPLE_LIMIT],
+        'removed': removed_items[:_SEMANTIC_SAMPLE_LIMIT],
+        'moved': moved[:_SEMANTIC_SAMPLE_LIMIT],
         'samples_truncated': (
             len(added_keys) > _SEMANTIC_SAMPLE_LIMIT
             or len(removed_keys) > _SEMANTIC_SAMPLE_LIMIT
+            or len(moved) > _SEMANTIC_SAMPLE_LIMIT
         ),
     }
 

@@ -6,10 +6,11 @@ import time
 
 
 _FIELDS = {'text', 'content-desc', 'resource-id', 'class', 'package'}
-_STATES = {'present', 'absent', 'enabled', 'disabled', 'focused', 'checked', 'selected'}
+_STATES = {'present', 'absent', 'enabled', 'disabled', 'focused', 'checked', 'selected', 'stable'}
 _VIEW_IDENTITY = _FIELDS | {'bounds'}
 _VIEW_WHEN_TRUE = ('checkable', 'checked', 'clickable', 'focused',
                    'long-clickable', 'scrollable', 'selected')
+_BOUNDS_RE = re.compile(r'\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]')
 
 
 def _selector(selector):
@@ -68,13 +69,92 @@ def is_focused(element):
 def _center(element):
     if _flag(element, 'enabled') is not True:
         raise ValueError('Element is disabled or enabled state is unknown; action refused')
-    bounds = re.fullmatch(r'\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]', str(element.get('bounds', '')))
+    bounds = _BOUNDS_RE.fullmatch(str(element.get('bounds', '')))
     if not bounds:
         raise ValueError('Element has no valid pixel bounds')
     x1, y1, x2, y2 = map(int, bounds.groups())
     if x1 < 0 or y1 < 0 or x2 <= x1 or y2 <= y1:
         raise ValueError('Element bounds are offscreen or empty')
     return (x1 + x2) // 2, (y1 + y2) // 2
+
+
+def _screen_signature(elements):
+    if not isinstance(elements, list) or not elements:
+        return ()
+    return tuple(
+        (
+            e.get('resource-id', ''),
+            e.get('text', ''),
+            e.get('content-desc', ''),
+            e.get('bounds', ''),
+        )
+        for e in elements
+        if isinstance(e, dict)
+    )
+
+
+def _validate_scroll(selector, start_x, start_y, end_x, end_y, max_swipes, duration_ms, settle_ms):
+    selector = _selector(selector)
+    coordinates = (start_x, start_y, end_x, end_y)
+    if any(type(value) is not int or value < 0 for value in coordinates):
+        raise ValueError('Swipe coordinates must be nonnegative integer pixels')
+    if (start_x, start_y) == (end_x, end_y):
+        raise ValueError('Swipe endpoints must differ')
+    for value, lower, upper, name in (
+            (max_swipes, 0, 10, 'max_swipes'),
+            (duration_ms, 50, 2000, 'duration_ms'),
+            (settle_ms, 0, 2000, 'settle_ms')):
+        if type(value) is not int or not lower <= value <= upper:
+            raise ValueError(f'{name} must be {lower}..{upper}')
+    return selector
+
+
+def _validate_wait(selector, state, timeout_ms, poll_interval_ms):
+    selector = _selector(selector)
+    if state not in _STATES:
+        raise ValueError('Unsupported UI state')
+    if not 1 <= timeout_ms <= 30000 or not 100 <= poll_interval_ms <= 2000:
+        raise ValueError('timeout_ms must be 1..30000; poll_interval_ms must be 100..2000')
+    return selector
+
+
+def _wait_result(matched, element, observations, start):
+    return {'matched': matched, 'status': 'matched' if matched else 'timeout',
+            'observations': observations, 'elapsed_ms': math.ceil((time.monotonic() - start) * 1000),
+            'element': element_view(element)}
+
+
+async def _poll_element(server, device_serial, selector, state, timeout_ms, poll_interval_ms):
+    start = time.monotonic()
+    deadline = start + timeout_ms / 1000
+    observations = 0
+    element = None
+    last_bounds = None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            elements = await asyncio.wait_for(
+                server.elements(device_serial), remaining)
+        except asyncio.TimeoutError:
+            break
+        observations += 1
+        element = _match(elements, selector)
+        matched = (element is None) if state == 'absent' else element is not None
+        if matched and state == 'stable':
+            current_bounds = element.get('bounds')
+            matched = bool(current_bounds and current_bounds == last_bounds)
+            last_bounds = current_bounds
+        elif matched and state not in {'present', 'absent'}:
+            key = 'enabled' if state == 'disabled' else state
+            matched = _flag(element, key) is (state != 'disabled')
+        else:
+            last_bounds = element.get('bounds') if element is not None else None
+        if matched and time.monotonic() <= deadline:
+            return _wait_result(True, element, observations, start)
+        await asyncio.sleep(min(poll_interval_ms / 1000, max(0, deadline - time.monotonic())))
+    return _wait_result(False, element, observations, start)
 
 
 class ElementTools:
@@ -105,23 +185,22 @@ class ElementTools:
         Supply swipe coordinates from the current screen. Returns only presence
         and counts; tap_element must observe again before acting on the result.
         """
-        selector = _selector(selector)
-        coordinates = (start_x, start_y, end_x, end_y)
-        if any(type(value) is not int or value < 0 for value in coordinates):
-            raise ValueError('Swipe coordinates must be nonnegative integer pixels')
-        if (start_x, start_y) == (end_x, end_y):
-            raise ValueError('Swipe endpoints must differ')
-        for value, lower, upper, name in (
-                (max_swipes, 0, 10, 'max_swipes'),
-                (duration_ms, 50, 2000, 'duration_ms'),
-                (settle_ms, 0, 2000, 'settle_ms')):
-            if type(value) is not int or not lower <= value <= upper:
-                raise ValueError(f'{name} must be {lower}..{upper}')
+        selector = _validate_scroll(
+            selector, start_x, start_y, end_x, end_y, max_swipes, duration_ms, settle_ms
+        )
+        last_signature = None
         for swipes in range(max_swipes + 1):
-            found = _match(await self.server.elements(device_serial), selector) is not None
-            if found or swipes == max_swipes:
-                return {'status': 'found' if found else 'not_found', 'matched': found,
-                        'swipes': swipes, 'observations': swipes + 1}
+            elements = await self.server.elements(device_serial)
+            found = _match(elements, selector) is not None
+            signature = _screen_signature(elements)
+            stagnant = bool(settle_ms > 0 and signature and signature == last_signature)
+            if found or swipes == max_swipes or stagnant:
+                result = {'status': 'found' if found else 'not_found', 'matched': found,
+                          'swipes': swipes, 'observations': swipes + 1}
+                if stagnant and not found:
+                    result['scroll_end_reached'] = True
+                return result
+            last_signature = signature
             await self.server.swipe(device_serial, start_x, start_y, end_x, end_y,
                                     duration_ms=duration_ms)
             await asyncio.sleep(settle_ms / 1000)
@@ -132,11 +211,7 @@ class ElementTools:
                                    timeout_ms: int = 5000,
                                    poll_interval_ms: int = 250) -> dict:
         """Tap an exact match, then observe a bounded post-action condition."""
-        expected_selector = _selector(expected_selector)
-        if expected_state not in _STATES:
-            raise ValueError('Unsupported UI state')
-        if not 1 <= timeout_ms <= 30000 or not 100 <= poll_interval_ms <= 2000:
-            raise ValueError('timeout_ms must be 1..30000; poll_interval_ms must be 100..2000')
+        _validate_wait(expected_selector, expected_state, timeout_ms, poll_interval_ms)
         action = await self.tap_element(device_serial, selector)
         verification = await self.wait_for_element(
             device_serial, expected_selector, expected_state, timeout_ms, poll_interval_ms)
@@ -157,42 +232,12 @@ class ElementTools:
     async def wait_for_element(self, device_serial: str, selector: dict[str, str],
                                state: str = 'present', timeout_ms: int = 5000,
                                poll_interval_ms: int = 250) -> dict:
-        """Poll locally for present/absent/enabled/disabled/focused/checked/selected.
+        """Poll locally for present/absent/enabled/disabled/focused/checked/selected/stable.
 
         Exact AND matching; duplicates and device errors fail rather than imply absence.
         A timeout returns matched=false. It is not a passing assertion.
         """
-        selector = _selector(selector)
-        if state not in _STATES:
-            raise ValueError('Unsupported UI state')
-        if not 1 <= timeout_ms <= 30000 or not 100 <= poll_interval_ms <= 2000:
-            raise ValueError('timeout_ms must be 1..30000; poll_interval_ms must be 100..2000')
-        start = time.monotonic()
-        deadline = start + timeout_ms / 1000
-        observations = 0
-        element = None
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            try:
-                elements = await asyncio.wait_for(
-                    self.server.elements(device_serial), remaining)
-            except asyncio.TimeoutError:
-                break
-            observations += 1
-            element = _match(elements, selector)
-            matched = (element is None) if state == 'absent' else element is not None
-            if matched and state not in {'present', 'absent'}:
-                key = 'enabled' if state == 'disabled' else state
-                matched = _flag(element, key) is (state != 'disabled')
-            if matched and time.monotonic() <= deadline:
-                return self._result(True, element, observations, start)
-            await asyncio.sleep(min(poll_interval_ms / 1000, max(0, deadline - time.monotonic())))
-        return self._result(False, element, observations, start)
-
-    @staticmethod
-    def _result(matched, element, observations, start):
-        return {'matched': matched, 'status': 'matched' if matched else 'timeout',
-                'observations': observations, 'elapsed_ms': math.ceil((time.monotonic() - start) * 1000),
-                'element': element_view(element)}
+        selector = _validate_wait(selector, state, timeout_ms, poll_interval_ms)
+        return await _poll_element(
+            self.server, device_serial, selector, state, timeout_ms, poll_interval_ms
+        )

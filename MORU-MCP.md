@@ -145,13 +145,24 @@ Nothing in the adapter calls the combined read any more.
 
 Every element read calls the same `dump_hierarchy(compressed=True)` and the same
 upstream parser and filter the combined read uses, so the element list is the
-one that read produces. What differs is where the filter's screen size comes
-from: the combined read refreshed it from each screenshot, while this path takes
-the size recorded when the controller was created. After a rotation the recorded
-size is stale until the controller is recreated, which affects only which
-offscreen elements the filter prunes; `compare_current` refuses a capture whose
-own image dimensions changed. Element bounds come from the dump either way, so
-`tap_element` and `input_element` still compute the same coordinates.
+one that read produces. Each read also refreshes the recorded `device_width` and
+`device_height` from the largest origin-anchored (`left == 0, top == 0`) hierarchy
+node's `parsed_bounds` when its area is at least half the recorded display area, so
+screen rotation updates the offscreen filter without recreating the controller or
+shrinking to a status bar; `compare_current` still refuses a capture whose own
+image dimensions changed. Element bounds come from the dump either way, so
+`tap_element` and `input_element` compute the same coordinates.
+
+`_read_hierarchy` and `_read_screenshot` in `moru_mcp.py` also call
+`client._device.dump_hierarchy(compressed=True)` and `client._device.screenshot()`
+directly when `UIAutomatorClient._device` is already connected, bypassing
+`UIAutomatorClient._ensure_connected()`'s per-call `device.info` RPC and
+falling back to `client.get_hierarchy()` / `client.get_screenshot_base64()` on
+disconnect. On Android SDK 37 (`Pixel 10 Pro XL`), `device.info` cost ~64 ms per
+call (~38% of every `hierarchy` read) and threw
+`IllegalStateException: ApplicationSharedMemory not initialized` on fresh
+connections. `_hierarchy_json` also enforces the 4 KiB filtered JSON budget
+incrementally in `O(N)` instead of re-encoding the accumulated list per node.
 
 Text input reads the screen once. Upstream's focus helper decides whether the
 field already holds focus, and so skips a redundant tap, from its own combined
@@ -296,7 +307,9 @@ The image size bounds visual input, but the host model determines its actual
 image-token cost.
 
 `wait_for_element` supports `present`, `absent`, `enabled`, `disabled`, `focused`,
-`checked`, and `selected`. Timeout is 1–30000 ms (default 5000), polling interval
+`checked`, `selected`, and `stable` (`stable` requires the matched element to keep
+identical non-empty `bounds` across two consecutive observations so sliding sheets
+or list animations settle before interaction). Timeout is 1–30000 ms (default 5000), polling interval
 100–2000 ms (default 250). Polling runs inside one tool call without additional
 LLM turns; only the final matching-element summary, observation count, elapsed
 time and `matched` flag are returned. `matched: false` / `status: timeout` is a
@@ -309,14 +322,23 @@ a blocking upstream device call can delay return. This is not a motion recorder.
 For a known accessible target, call `scroll_to_element` with an exact selector
 and swipe endpoints verified on the current screen. It observes before moving,
 then rereads the hierarchy after each swipe; intermediate hierarchies and images
-stay local. The response contains only `status`, `matched`, `swipes`, and
-`observations`. `max_swipes` is 0–10 (default 5), `duration_ms` is 50–2000
+stay local. The response contains `status`, `matched`, `swipes`, and
+`observations`, plus `scroll_end_reached: true` when `settle_ms > 0` and a swipe
+over a non-empty hierarchy produces an identical element/bounds signature and stops
+early. `max_swipes` is 0–10 (default 5), `duration_ms` is 50–2000
 (default 400), and `settle_ms` is 0–2000 (default 250). Duplicate matches,
 observation errors and swipe failures stop immediately. A missing target returns
 `matched: false`; finding it establishes presence, not enabled state or a
 successful interaction. Use `tap_element` next so tapping reads the current
 position again. Cancellation stops subsequent swipes, though an upstream action
 already in progress may finish.
+
+`compare_current` also includes `pixel_delta.changed_bounds` (`[left, top, right, bottom]`
+with exclusive `right`/`bottom` for pixels with channel delta `>= threshold`, or `null`
+when no pixels reach threshold) and `semantic_delta.moved_count` /
+`semantic_delta.moved` (unique 1-to-1 paired elements from `added`/`removed` whose
+identity and non-bounds attributes stayed the same across both observations while
+`bounds` shifted).
 
 ```json
 {"device_serial":"SELECTED_SERIAL","selector":{"text":"Display","package":"com.android.settings"},"start_x":500,"start_y":1500,"end_x":500,"end_y":500,"max_swipes":3}
