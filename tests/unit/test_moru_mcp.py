@@ -32,7 +32,7 @@ def node_xml(**overrides):
             f'<hierarchy rotation="0"><node {attributes} /></hierarchy>')
 
 
-class TaoMcpTest(unittest.IsolatedAsyncioTestCase):
+class MoruMcpTest(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         cls.state = tempfile.TemporaryDirectory()

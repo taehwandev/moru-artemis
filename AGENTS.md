@@ -8,7 +8,7 @@ Use the installed Python environment and focused unit tests for touched code.
 All device operations require an explicit serial. Do not publish device data,
 local host configurations, credentials or personal machine paths.
 
-Tao integration guidance is owned by the installed Tao library. Machine-local
+Moru integration guidance is owned by the installed Moru Core library. Machine-local
 configuration belongs in user settings, not this repository. Keep commits scoped
 to the requested change; push only with explicit user authorization.
 

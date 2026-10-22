@@ -101,7 +101,7 @@ def _parse_gfxinfo(output, include_stages=True):
 def _record_sheet(device, seconds, fps, crop):
     remote = f'/sdcard/moru-artemis-{uuid4().hex}.mp4'
     try:
-        with tempfile.TemporaryDirectory(prefix='tao-frames-') as directory:
+        with tempfile.TemporaryDirectory(prefix='moru-frames-') as directory:
             local = Path(directory) / 'recording.mp4'
             response = device.shell(
                 f'screenrecord --time-limit {seconds} --bit-rate 4000000 {remote}',

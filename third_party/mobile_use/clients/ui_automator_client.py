@@ -15,6 +15,8 @@
 #
 # Originally from mobile-use (https://github.com/minitap-ai/mobile-use).
 # See third_party/mobile_use/METADATA for the upstream source and local modifications.
+# Modified by the moru-artemis contributors: prefer UIAutomator2 screenshot capture
+# before adb screencap and strip multi-display stdout warnings ahead of PNG bytes.
 
 """UIAutomator2 client for Android device screen data retrieval.
 

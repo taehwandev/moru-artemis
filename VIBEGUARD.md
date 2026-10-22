@@ -48,7 +48,7 @@ summary simple, and handle safe fixes behind the scenes. Developers can adjust
 
 ## Local Shared Rules
 
-/Users/taehwan/git/tao-agent-os
+`<MORU_ROOT>`
 
 ## Cost-Aware Architecture Rule
 

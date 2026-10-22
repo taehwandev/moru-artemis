@@ -14,6 +14,7 @@
 
 """Unit tests for ADB RSA key inspection and automated self-healing."""
 
+# Modified by the moru-artemis contributors:
 # A truncated placeholder, not a key. The PEM markers are assembled from parts so a
 # secret scanner does not read this file as holding a real private key: spelled out
 # in full they block commits and pushes in any checkout whose safety gate scans the
