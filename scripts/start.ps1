@@ -1,4 +1,5 @@
 # Copyright 2026 Google LLC
+# Modified by Moru contributors in 2026.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -224,9 +225,11 @@ function Test-NodeCompatible {
         if ($parts.Count -ge 2) {
             $major = [int]$parts[0]
             $minor = [int]$parts[1]
-            if ($major -ge 26) { return $true }
-            if ($major -eq 24 -and $minor -ge 15) { return $true }
-            if ($major -eq 22 -and $minor -ge 22) { return $true }
+            $patch = if ($parts.Count -ge 3) { [int]$parts[2] } else { 0 }
+            if ($major -gt 26) { return $true }
+            if ($major -eq 26 -and ($minor -gt 12 -or ($minor -eq 12 -and $patch -ge 1))) { return $true }
+            if ($major -eq 24 -and ($minor -gt 22 -or ($minor -eq 22 -and $patch -ge 1))) { return $true }
+            if ($major -eq 22 -and ($minor -gt 23 -or ($minor -eq 23 -and $patch -ge 4))) { return $true }
         }
     } catch {
         return $false
@@ -255,9 +258,9 @@ function Install-PortableNode {
         }
     }
 
-    Write-Host "   [INFO] Installing portable Node.js LTS (v22.23.2) in user space..." -ForegroundColor Cyan
+    Write-Host "   [INFO] Installing portable Node.js LTS (v22.23.4) in user space..." -ForegroundColor Cyan
     try {
-        $nodeVer = "v22.23.2"
+        $nodeVer = "v22.23.4"
         $arch = if ([System.Environment]::Is64BitOperatingSystem) {
             if ($env:PROCESSOR_ARCHITECTURE -match "ARM64") { "arm64" } else { "x64" }
         } else { "x64" }
@@ -385,8 +388,8 @@ if ((-not (Test-Path $ShowcaseIndex)) -and (-not (Test-Path $ShowcaseIndexAlt1))
         # 1. Try nvm if available on Windows
         if (Test-CommandExists "nvm") {
             Write-Host "   [INFO] Installing Node.js 22 LTS via nvm..." -ForegroundColor Cyan
-            & nvm install 22.23.2 | Out-Null
-            & nvm use 22.23.2 | Out-Null
+            & nvm install 22.23.4 | Out-Null
+            & nvm use 22.23.4 | Out-Null
             Update-EnvironmentPath
         }
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Google LLC
+# Modified by Moru contributors in 2026.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -95,7 +96,7 @@ request_sudo() {
     return 1
 }
 
-# Helper to check if Node.js & npm meet Angular CLI 22 requirement (>= 22.22.0, >= 24.15.0, or >= 26.0.0)
+# Helper to check if Node.js & npm meet patched security baseline (>= 22.23.4, >= 24.22.1, or >= 26.12.1)
 is_node_compatible() {
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         return 1
@@ -103,15 +104,25 @@ is_node_compatible() {
     local node_ver
     node_ver="$(node -v 2>/dev/null | tr -d 'v')"
     [ -z "${node_ver}" ] && return 1
-    local major minor
+    local major minor patch
     major="$(echo "${node_ver}" | cut -d. -f1)"
     minor="$(echo "${node_ver}" | cut -d. -f2)"
-    if [ "${major}" -ge 26 ] 2>/dev/null; then
+    patch="$(echo "${node_ver}" | cut -d. -f3)"
+    patch="${patch:-0}"
+    if [ "${major}" -gt 26 ] 2>/dev/null; then
         return 0
-    elif [ "${major}" -ge 24 ] 2>/dev/null; then
-        [ "${minor}" -ge 15 ] 2>/dev/null && return 0
-    elif [ "${major}" -ge 22 ] 2>/dev/null; then
-        [ "${minor}" -ge 22 ] 2>/dev/null && return 0
+    elif [ "${major}" -eq 26 ] 2>/dev/null; then
+        if [ "${minor}" -gt 12 ] 2>/dev/null || { [ "${minor}" -eq 12 ] && [ "${patch}" -ge 1 ]; } 2>/dev/null; then
+            return 0
+        fi
+    elif [ "${major}" -eq 24 ] 2>/dev/null; then
+        if [ "${minor}" -gt 22 ] 2>/dev/null || { [ "${minor}" -eq 22 ] && [ "${patch}" -ge 1 ]; } 2>/dev/null; then
+            return 0
+        fi
+    elif [ "${major}" -eq 22 ] 2>/dev/null; then
+        if [ "${minor}" -gt 23 ] 2>/dev/null || { [ "${minor}" -eq 23 ] && [ "${patch}" -ge 4 ]; } 2>/dev/null; then
+            return 0
+        fi
     fi
     return 1
 }
@@ -328,7 +339,7 @@ if [ ! -f "${SHOWCASE_INDEX}" ] && [ ! -f "${SHOWCASE_INDEX_ALT1}" ] && [ ! -f "
             esac
             OS_SYS="$(uname -s | tr '[:upper:]' '[:lower:]')"
             if [ -n "${NODE_ARCH}" ] && { [ "${OS_SYS}" = "linux" ] || [ "${OS_SYS}" = "darwin" ]; }; then
-                NODE_VER="v22.23.2"
+                NODE_VER="v22.23.4"
                 NODE_DIR="${HOME}/.local/share/node"
                 echo -e "   ${CYAN}📦 Installing portable Node.js ${NODE_VER} in user space (~/.local)...${NC}"
                 rm -rf "${NODE_DIR}"

@@ -1,4 +1,5 @@
 # Copyright 2026 Google LLC
+# Modified by Moru contributors in 2026.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM node:22-bookworm-slim AS frontend-builder
+FROM node:22.23.4-bookworm-slim AS frontend-builder
 
 WORKDIR /build/apps/showcase_ui
 COPY apps/showcase_ui/package.json apps/showcase_ui/package-lock.json ./
