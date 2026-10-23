@@ -43,9 +43,7 @@ class CaptureOrderTests(unittest.TestCase):
     def setUp(self):
         self.client = UIAutomatorClient(device_id="fixture-serial")
         self.device = Mock()
-        self.connect = patch.object(
-            self.client, "_ensure_connected", return_value=self.device
-        )
+        self.connect = patch.object(self.client, "_ensure_connected", return_value=self.device)
         self.connect.start()
         self.addCleanup(self.connect.stop)
 
@@ -58,16 +56,20 @@ class CaptureOrderTests(unittest.TestCase):
         self.device.screenshot.side_effect = RuntimeError("uiautomator2 is down")
         image = _PNG_SIGNATURE + b"body"
         captured = b"[Warning] Multiple displays\n" + image
-        with patch("artemis.clients.ui_automator_client.subprocess.run") as run, \
-                patch("artemis.clients.ui_automator_client.Image.open") as opened:
+        with (
+            patch("artemis.clients.ui_automator_client.subprocess.run") as run,
+            patch("artemis.clients.ui_automator_client.Image.open") as opened,
+        ):
             run.return_value = Mock(stdout=captured)
             self.client.get_screenshot()
         self.assertEqual(image, opened.call_args.args[0].getvalue())
 
     def test_both_paths_failing_returns_none_rather_than_a_broken_image(self):
         self.device.screenshot.side_effect = RuntimeError("uiautomator2 is down")
-        with patch("artemis.clients.ui_automator_client.subprocess.run",
-                   side_effect=subprocess.SubprocessError("adb is down")):
+        with patch(
+            "artemis.clients.ui_automator_client.subprocess.run",
+            side_effect=subprocess.SubprocessError("adb is down"),
+        ):
             self.assertIsNone(self.client.get_screenshot())
 
 

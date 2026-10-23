@@ -22,9 +22,7 @@
 _PEM_BEGIN = "-----BEGIN " + "PRIVATE KEY-----"
 _PEM_END = "-----END " + "PRIVATE KEY-----"
 _PLACEHOLDER_PRIVATE_KEY = (
-    f"{_PEM_BEGIN}\n"
-    "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n"
-    f"{_PEM_END}\n"
+    f"{_PEM_BEGIN}\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n{_PEM_END}\n"
 )
 
 from pathlib import Path

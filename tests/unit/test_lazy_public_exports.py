@@ -1,4 +1,5 @@
 """Device-only imports must not initialize the optional AI SDK."""
+
 import os
 from pathlib import Path
 import subprocess
@@ -12,8 +13,17 @@ class LazyPublicExportsTest(unittest.TestCase):
     def run_isolated(self, code):
         env = {k: v for k, v in os.environ.items() if not k.endswith("API_KEY")}
         result = subprocess.run(
-            [sys.executable, "-I", "-B", "-c", "import sys; sys.path.insert(0, " + repr(str(ROOT)) + "); " + code],
-            env=env, capture_output=True, text=True, timeout=15,
+            [
+                sys.executable,
+                "-I",
+                "-B",
+                "-c",
+                "import sys; sys.path.insert(0, " + repr(str(ROOT)) + "); " + code,
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         self.assertEqual(0, result.returncode, result.stderr)
 

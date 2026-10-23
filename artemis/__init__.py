@@ -28,18 +28,18 @@ _legacy_imports.install()
 from importlib import import_module
 
 _EXPORT_MODULES = {
-    'ArtemisClient': 'artemis.interfaces.sdk.client',
-    'ConcurrencyMode': 'artemis.interfaces.sdk.client',
-    'StreamEvent': 'artemis.interfaces.sdk.task',
-    'StreamEventType': 'artemis.interfaces.sdk.task',
-    'Task': 'artemis.interfaces.sdk.task',
-    'Capabilities': 'artemis_client',
-    'Device': 'artemis_client',
-    'TaskHandle': 'artemis_client',
-    'TaskResult': 'artemis_client',
-    'Agent': 'artemis.sdk.agent',
-    'Builders': 'artemis.sdk.builders',
-    'BaseDeviceDriver': 'artemis.drivers.base',
+    "ArtemisClient": "artemis.interfaces.sdk.client",
+    "ConcurrencyMode": "artemis.interfaces.sdk.client",
+    "StreamEvent": "artemis.interfaces.sdk.task",
+    "StreamEventType": "artemis.interfaces.sdk.task",
+    "Task": "artemis.interfaces.sdk.task",
+    "Capabilities": "artemis_client",
+    "Device": "artemis_client",
+    "TaskHandle": "artemis_client",
+    "TaskResult": "artemis_client",
+    "Agent": "artemis.sdk.agent",
+    "Builders": "artemis.sdk.builders",
+    "BaseDeviceDriver": "artemis.drivers.base",
 }
 
 __all__ = [
