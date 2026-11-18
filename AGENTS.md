@@ -1,10 +1,10 @@
 # moru-artemis local development
 
-Read `MORU-MCP.md` for the host-driven MCP contract. Preserve upstream Apache-2.0
-licensing and copyright notices. Keep upstream SDK compatibility and keep the
-host adapter independent of paid model calls and autonomous task runners.
+Read `MORU-MCP.md` for the host-driven MCP contract. Preserve Apache-2.0
+licensing and copyright notices. Keep the host adapter independent of paid model
+calls and autonomous task runners.
 
-Use the installed Python environment and focused unit tests for touched code.
+Use `cargo test` and `cargo clippy --all-targets` for touched Rust code.
 All device operations require an explicit serial. Do not publish device data,
 local host configurations, credentials or personal machine paths.
 

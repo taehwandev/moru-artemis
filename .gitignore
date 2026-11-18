@@ -132,3 +132,6 @@ Thumbs.db
 .env.vibeguard.local
 # VibeGuard local state
 .vibeguard/
+
+# Rust
+/target/
