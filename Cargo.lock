@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "moru-artemis"
-version = "0.2.0"
+version = "26.47.0"
 dependencies = [
  "base64",
  "image",
